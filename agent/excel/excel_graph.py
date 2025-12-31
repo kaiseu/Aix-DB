@@ -54,6 +54,6 @@ def create_excel_graph():
     graph.add_edge("data_render_apache", END)
     graph_compiled: CompiledStateGraph = graph.compile()
 
-    logger.info(f"excel_graph mermaid_code: {graph_compiled.get_graph().draw_mermaid()}")
+    # logger.info(f"excel_graph mermaid_code: {graph_compiled.get_graph().draw_mermaid()}")
 
     return graph_compiled
