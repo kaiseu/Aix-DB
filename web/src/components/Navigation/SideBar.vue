@@ -110,6 +110,10 @@ const SideBarItem = defineComponent({
   },
 })
 
+const handleSidebarMenuSelect = (key: string) => {
+  router.push({ name: key })
+}
+
 const sidebarItems = ref([
   {
     label: '数据源',
@@ -139,15 +143,18 @@ const sidebarItems = ref([
   },
   {
     label: '权限配置',
-    key: 'PermissionConfig',
+    key: 'PermissionConfigGroup',
     renderIcon() {
       return (
         <div class="i-material-symbols:lock-outline text-24"></div>
       )
     },
-    onClick() {
-      router.push({ name: 'PermissionConfig' })
-    },
+    children: [
+      {
+        label: '数据权限',
+        key: 'PermissionConfig',
+      }
+    ],
     props: {},
   },
   {
@@ -264,17 +271,34 @@ const handleMenuSelect = (key: string) => {
         flex="1 ~ col gap-28"
         pt-24
       >
-        <SideBarItem
-          v-for="(sidebarItem) in sidebarItems"
-          :key="sidebarItem.key"
-          :label="sidebarItem.label"
-          :active="sidebarItem.key === route.name"
-          v-bind="sidebarItem.props"
-          :theme="$props.theme"
-          @click="sidebarItem.onClick.call(sidebarItem)"
-        >
-          <component :is="sidebarItem.renderIcon" />
-        </SideBarItem>
+        <template v-for="(sidebarItem) in sidebarItems" :key="sidebarItem.key">
+           <n-dropdown
+              v-if="sidebarItem.children"
+              trigger="hover"
+              placement="right-start"
+              :options="sidebarItem.children"
+              @select="handleSidebarMenuSelect"
+           >
+              <SideBarItem
+                :label="sidebarItem.label"
+                :active="(sidebarItem.children && sidebarItem.children.some(c => c.key === route.name)) || sidebarItem.key === route.name"
+                v-bind="sidebarItem.props"
+                :theme="$props.theme"
+              >
+                <component :is="sidebarItem.renderIcon" />
+              </SideBarItem>
+           </n-dropdown>
+           <SideBarItem
+             v-else
+             :label="sidebarItem.label"
+             :active="sidebarItem.key === route.name"
+             v-bind="sidebarItem.props"
+             :theme="$props.theme"
+             @click="sidebarItem.onClick && sidebarItem.onClick.call(sidebarItem)"
+           >
+             <component :is="sidebarItem.renderIcon" />
+           </SideBarItem>
+        </template>
       </div>
 
       <n-dropdown

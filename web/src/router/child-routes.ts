@@ -49,7 +49,7 @@ const childrenRoutes: Array<RouteRecordRaw> = [
   {
     path: 'permission-config',
     name: 'PermissionConfig',
-    component: () => import('@/views/PermissionConfig.vue'),
+    component: () => import('@/views/system/permission/PermissionList.vue'),
     meta: { requiresAuth: true },
   },
   {

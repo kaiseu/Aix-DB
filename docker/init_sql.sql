@@ -158,3 +158,45 @@ COMMENT ON COLUMN t_ai_model.protocol IS '协议: 1:OpenAI, 2:Ollama';
 COMMENT ON COLUMN t_ai_model.config IS '配置JSON';
 COMMENT ON COLUMN t_ai_model.status IS '状态: 1:正常';
 COMMENT ON COLUMN t_ai_model.create_time IS '创建时间';
+
+-- t_ds_rules definition
+DROP TABLE IF EXISTS t_ds_rules CASCADE;
+CREATE TABLE t_ds_rules (
+  id BIGSERIAL PRIMARY KEY,
+  name VARCHAR(128) NOT NULL,
+  description VARCHAR(512),
+  permission_list TEXT,
+  user_list TEXT,
+  white_list_user TEXT,
+  enable BOOLEAN DEFAULT TRUE,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  oid BIGINT
+);
+
+COMMENT ON TABLE t_ds_rules IS '权限规则组';
+COMMENT ON COLUMN t_ds_rules.name IS '规则名称';
+COMMENT ON COLUMN t_ds_rules.permission_list IS '权限ID列表(JSON)';
+COMMENT ON COLUMN t_ds_rules.user_list IS '用户ID列表(JSON)';
+COMMENT ON COLUMN t_ds_rules.enable IS '是否启用';
+
+-- t_ds_permission definition
+DROP TABLE IF EXISTS t_ds_permission CASCADE;
+CREATE TABLE t_ds_permission (
+  id BIGSERIAL PRIMARY KEY,
+  name VARCHAR(128),
+  type VARCHAR(64) NOT NULL,
+  ds_id BIGINT,
+  table_id BIGINT,
+  expression_tree TEXT,
+  permissions TEXT,
+  white_list_user TEXT,
+  enable BOOLEAN DEFAULT TRUE,
+  create_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  auth_target_type VARCHAR(128),
+  auth_target_id BIGINT
+);
+
+COMMENT ON TABLE t_ds_permission IS '数据权限详情';
+COMMENT ON COLUMN t_ds_permission.type IS '权限类型: row, column';
+COMMENT ON COLUMN t_ds_permission.expression_tree IS '行权限表达式树(JSON)';
+COMMENT ON COLUMN t_ds_permission.permissions IS '列权限配置(JSON)';
