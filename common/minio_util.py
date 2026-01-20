@@ -32,13 +32,10 @@ class MinioUtils:
 
     @staticmethod
     def _build_client():
-        """初始化MinIO客户端"""
-        minio_endpoint = os.getenv("MINIO_ENDPOINT")
-        access_key = os.getenv("MINIO_ACCESS_KEY")
-        # NOTE: 环境变量名必须是 MINIO_SECRET_KEY（之前的 MiNIO_SECRET_KEY 是拼写错误）
-        secret_key = os.getenv("MINIO_SECRET_KEY")
-        if not all([minio_endpoint, access_key, secret_key]):
-            raise MyException(SysCode.c_9999, "MinIO环境变量未正确配置")
+        """初始化MinIO客户端（内置默认值，开箱即用）"""
+        minio_endpoint = os.getenv("MINIO_ENDPOINT", "127.0.0.1:9000")
+        access_key = os.getenv("MINIO_ACCESS_KEY", "admin")
+        secret_key = os.getenv("MINIO_SECRET_KEY", "admin123")
         return Minio(endpoint=minio_endpoint, access_key=access_key, secret_key=secret_key, secure=False)
 
     def ensure_bucket(self, bucket_name: str) -> None:

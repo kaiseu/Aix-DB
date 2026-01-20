@@ -37,18 +37,39 @@ async def ensure_logging_config(app, loop):
     """
     import logging
     from config.load_env import load_env
-    
+
     # 重新加载日志配置（如果被覆盖了）
     root_logger = logging.getLogger()
-    
+
     # 如果 root logger 没有 handlers 或者级别不对，重新加载配置
     if not root_logger.handlers or root_logger.level > logging.INFO:
         # 重新加载日志配置
         load_env()
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.INFO)
-        logging.info("✅ [SERV] Logging configuration reloaded in worker - handlers: %d, level: %s", 
+        logging.info("✅ [SERV] Logging configuration reloaded in worker - handlers: %d, level: %s",
                      len(root_logger.handlers), root_logger.level)
+
+
+@app.main_process_start
+async def init_minio(app, loop):
+    """
+    在主进程启动时初始化 MinIO bucket（只执行一次）
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # 获取默认 bucket 名称
+    default_bucket = os.getenv("MINIO_DEFAULT_BUCKET", "filedata")
+
+    try:
+        from common.minio_util import MinioUtils
+        minio_utils = MinioUtils()
+        minio_utils.ensure_bucket(default_bucket)
+        logger.info(f"✅ [SERV] MinIO bucket '{default_bucket}' initialized successfully")
+    except Exception as e:
+        # MinIO 初始化失败不阻止服务启动，只记录警告
+        logger.warning(f"⚠️ [SERV] MinIO initialization failed: {e}. File upload features may not work.")
 
 autodiscover(
     app,

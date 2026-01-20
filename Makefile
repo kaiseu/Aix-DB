@@ -1,50 +1,75 @@
-# 导入子模块web的 Makefile
-include web/Makefile
+# AIX-DB All-in-One 镜像构建配置
+# 包含：前端(nginx) + 后端 + MinIO + PostgreSQL
 
-# 统一镜像项目名称
+# 项目名称和版本
 PROJECT_NAME = aix-db
+VERSION = 1.2.2
 
-# 统一 Docker 镜像标签
-DOCKER_IMAGE = apconw/$(PROJECT_NAME):1.2.1
+# Docker Hub 镜像
+DOCKER_IMAGE = apconw/$(PROJECT_NAME):$(VERSION)
 
-# 阿里云镜像仓库地址 (需要根据实际情况修改)
+# 阿里云镜像仓库
 ALIYUN_REGISTRY = crpi-7xkxsdc0iki61l0q.cn-hangzhou.personal.cr.aliyuncs.com
 ALIYUN_NAMESPACE = apconw
-ALIYUN_IMAGE_NAME = $(ALIYUN_REGISTRY)/$(ALIYUN_NAMESPACE)/$(PROJECT_NAME):1.2.1
+ALIYUN_IMAGE = $(ALIYUN_REGISTRY)/$(ALIYUN_NAMESPACE)/$(PROJECT_NAME):$(VERSION)
 
-# 服务端项目名称（保留兼容性）
-SERVER_PROJECT_NAME = sanic-web
-SERVER_DOCKER_IMAGE = apconw/$(SERVER_PROJECT_NAME):1.2.1
-SERVER_ALIYUN_IMAGE_NAME = $(ALIYUN_REGISTRY)/$(ALIYUN_NAMESPACE)/$(SERVER_PROJECT_NAME):1.2.1
+# Dockerfile 路径
+DOCKERFILE = ./docker/Dockerfile
 
-# ============ 统一镜像构建（前后端一起） ============
-# 构建统一镜像（前后端打包在一起）
+# ============ 本地构建 ============
+
+# 构建镜像（本地，当前架构）
 build:
-	docker build --no-cache -t $(DOCKER_IMAGE) -f ./docker/Dockerfile .
+	docker build --no-cache -t $(DOCKER_IMAGE) -f $(DOCKERFILE) .
 
-# 构建统一镜像（多架构）并推送至 Docker Hub
-docker-build-multi:
-	docker buildx build --platform linux/amd64,linux/arm64 --push -t $(DOCKER_IMAGE) -f ./docker/Dockerfile .
+# 构建镜像（使用缓存，加快构建速度）
+build-cache:
+	docker build -t $(DOCKER_IMAGE) -f $(DOCKERFILE) .
 
-# 构建统一镜像（多架构）并推送至阿里云镜像仓库
-docker-build-aliyun-multi:
-	docker buildx build --platform linux/amd64,linux/arm64 --push -t $(ALIYUN_IMAGE_NAME) -f ./docker/Dockerfile .
+# ============ 多架构构建并推送 ============
 
-# ============ 单独构建（保留兼容性） ============
-# 构建 Vue 3 前端项目镜像
-web-build:
-	$(MAKE) -C web docker-build
+# 构建多架构镜像并推送至 Docker Hub
+push-dockerhub:
+	docker buildx build --platform linux/amd64,linux/arm64 --push -t $(DOCKER_IMAGE) -f $(DOCKERFILE) .
 
-# 构建服务端镜像
-service-build:
-	docker build --no-cache -t $(SERVER_DOCKER_IMAGE) -f ./docker/Dockerfile .
+# 构建多架构镜像并推送至阿里云
+push-aliyun:
+	docker buildx build --platform linux/amd64,linux/arm64 --push -t $(ALIYUN_IMAGE) -f $(DOCKERFILE) .
 
-# 构建 服务端arm64/amd64架构镜像并推送docker-hub
-docker-build-server-multi:
-	docker buildx build --platform linux/amd64,linux/arm64 --push -t $(SERVER_DOCKER_IMAGE) -f ./docker/Dockerfile .
+# 同时推送至 Docker Hub 和阿里云
+push-all:
+	docker buildx build --platform linux/amd64,linux/arm64 --push \
+		-t $(DOCKER_IMAGE) \
+		-t $(ALIYUN_IMAGE) \
+		-f $(DOCKERFILE) .
 
-# 构建服务端arm64/amd64架构镜像并推送至阿里云镜像仓库
-docker-build-aliyun-server-multi:
-	docker buildx build --platform linux/amd64,linux/arm64 --push -t $(SERVER_ALIYUN_IMAGE_NAME) -f ./docker/Dockerfile .
+# ============ Docker Compose 操作 ============
 
-.PHONY: build docker-build-multi docker-build-aliyun-multi web-build service-build
+# 启动服务
+up:
+	cd docker && docker-compose up -d
+
+# 停止服务
+down:
+	cd docker && docker-compose down
+
+# 查看日志
+logs:
+	cd docker && docker-compose logs -f
+
+# 重启服务
+restart:
+	cd docker && docker-compose restart
+
+# ============ 清理 ============
+
+# 清理本地镜像
+clean:
+	docker rmi $(DOCKER_IMAGE) 2>/dev/null || true
+
+# 清理所有构建缓存
+clean-all:
+	docker rmi $(DOCKER_IMAGE) 2>/dev/null || true
+	docker builder prune -f
+
+.PHONY: build build-cache push-dockerhub push-aliyun push-all up down logs restart clean clean-all

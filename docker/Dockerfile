@@ -89,7 +89,7 @@ RUN find . -path "./.venv" -prune -o -type d -name __pycache__ -exec rm -rf {} +
     # 清理 docs 目录中不必要的文件
     rm -rf docs/site docs/blog docs/docs docs/images 2>/dev/null || true
 
-# ============ 阶段3: 最终运行镜像 ============
+# ============ 阶段3: 最终运行镜像（All-in-One 包含 PostgreSQL） ============
 FROM python:3.11-slim-bookworm
 
 # 使用构建参数支持多架构
@@ -98,7 +98,7 @@ ARG TARGETPLATFORM
 
 WORKDIR /app
 
-# 安装运行时的最小依赖和 MinIO
+# 安装运行时依赖：nginx, supervisor, MinIO, PostgreSQL
 RUN set -eux; \
     apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -108,6 +108,22 @@ RUN set -eux; \
     wget \
     ca-certificates \
     curl \
+    gnupg \
+    lsb-release \
+    locales \
+    gosu \
+    && \
+    # 设置 locale
+    sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
+    locale-gen && \
+    # 添加 PostgreSQL 官方仓库
+    echo "deb http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/pgdg.list && \
+    wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add - && \
+    apt-get update && \
+    # 安装 PostgreSQL 17 和 pgvector 扩展
+    apt-get install -y --no-install-recommends \
+    postgresql-17 \
+    postgresql-17-pgvector \
     && \
     # 根据架构下载并安装 MinIO deb 包
     if [ "$TARGETARCH" = "amd64" ]; then \
@@ -123,15 +139,23 @@ RUN set -eux; \
     rm -f /tmp/minio.deb && \
     # 验证 MinIO 安装
     minio --version && \
+    # 清理
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
     rm -rf /etc/nginx/sites-enabled/default /etc/nginx/sites-available/* && \
     rm -rf /usr/share/doc /usr/share/man /usr/share/locale && \
     rm -rf /usr/share/nginx/html/* && \
     # 创建必要的目录
-    mkdir -p /var/log/aix-db /var/log/nginx /var/log/supervisor && \
+    mkdir -p /var/log/aix-db /var/log/nginx /var/log/supervisor /var/log/minio /var/log/postgresql && \
+    mkdir -p /var/run/postgresql && \
+    chown -R postgres:postgres /var/run/postgresql && \
     # 精简 nginx 配置
     sed -i '/^#/d' /etc/nginx/nginx.conf 2>/dev/null || true
+
+# 设置 locale 环境变量
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
 
 # 从构建阶段复制虚拟环境（只复制必要的包）
 COPY --from=backend-builder /aix-db/.venv /aix-db/.venv
@@ -154,48 +178,21 @@ COPY --from=frontend-builder /app/web/dist /usr/share/nginx/html
 # 复制 nginx 配置
 COPY docker/nginx.conf.template /etc/nginx/conf.d/default.conf
 
-# 创建精简的 supervisor 配置（确保日志目录存在）
-RUN mkdir -p /var/log/supervisor /var/log/nginx /var/log/aix-db /var/log/minio /var/run /data && \
-    echo '[supervisord]' > /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'nodaemon=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'logfile=/var/log/aix-db/supervisord.log' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'logfile_maxbytes=50MB' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'logfile_backups=5' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'pidfile=/var/run/supervisord.pid' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo '[program:nginx]' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'command=nginx -g "daemon off;"' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stdout_logfile=/var/log/nginx/access.log' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stderr_logfile=/var/log/nginx/error.log' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo '[program:aix-db]' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'directory=/aix-db' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'command=/aix-db/.venv/bin/python serv.py' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'startsecs=10' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'startretries=3' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stopwaitsecs=10' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stopasgroup=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'killasgroup=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stdout_logfile=/dev/stdout' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stdout_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stderr_logfile=/dev/stderr' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stderr_logfile_maxbytes=0' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'redirect_stderr=false' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'priority=100' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo '' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo '[program:minio]' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'command=/usr/local/bin/minio server /data --console-address ":9001"' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'autostart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'autorestart=true' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'environment=MINIO_ROOT_USER="admin",MINIO_ROOT_PASSWORD="12345678"' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stdout_logfile=/var/log/minio/access.log' >> /etc/supervisor/conf.d/supervisord.conf && \
-    echo 'stderr_logfile=/var/log/minio/error.log' >> /etc/supervisor/conf.d/supervisord.conf
+# 复制 PostgreSQL 初始化脚本
+COPY docker/init_sql.sql /docker-entrypoint-initdb.d/init.sql
 
-# 修复 opentelemetry entry points 问题：直接创建修复后的 __init__.py
+# 创建 PostgreSQL 数据目录并设置权限
+RUN mkdir -p /var/lib/postgresql/data && \
+    chown -R postgres:postgres /var/lib/postgresql && \
+    chmod 700 /var/lib/postgresql/data
+
+# 创建日志目录并复制 supervisor 配置
+RUN mkdir -p /var/log/supervisor /var/log/nginx /var/log/aix-db /var/log/minio /var/log/postgresql /var/run /data
+
+# 复制 supervisor 配置文件
+COPY docker/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+
+# 修复 opentelemetry entry points 问题
 RUN echo 'from __future__ import annotations' > /tmp/otel_fix.py && \
     echo 'import logging' >> /tmp/otel_fix.py && \
     echo 'import typing' >> /tmp/otel_fix.py && \
@@ -247,36 +244,38 @@ ENV PATH="/aix-db/.venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    # Docker 环境标识，用于切换日志输出到 stdout
     DOCKER_ENV=true \
-    # 修复 opentelemetry context entry points 问题
-    OTEL_PYTHON_CONTEXT=contextvars_context
+    OTEL_PYTHON_CONTEXT=contextvars_context \
+    # PostgreSQL 配置（内置数据库）
+    POSTGRES_USER=aix_db \
+    POSTGRES_DB=aix_db \
+    # 默认使用内置 PostgreSQL（localhost）
+    SQLALCHEMY_DATABASE_URI=postgresql+psycopg2://aix_db:1@127.0.0.1:5432/aix_db \
+    # MinIO 配置（内置 MinIO，与 supervisord.conf 中的用户密码一致）
+    MINIO_ENDPOINT=127.0.0.1:9000 \
+    MINIO_ACCESS_KEY=admin \
+    MINIO_SECRET_KEY=admin123 \
+    MINIO_DEFAULT_BUCKET=filedata
 
 # 暴露端口
 # 80: nginx (前端)
 # 8088: 后端服务 (aix-db)
+# 5432: PostgreSQL
 # 9000: MinIO API
 # 9001: MinIO Console
-EXPOSE 80 8088 9000 9001
+EXPOSE 80 8088 5432 9000 9001
 
-# 健康检查
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost/ || exit 1
+# 健康检查（检查所有关键服务）
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD wget --no-verbose --tries=1 --spider http://localhost/ && \
+    pg_isready -U aix_db -h localhost || exit 1
 
-# 创建启动脚本，确保目录存在
-RUN echo '#!/bin/sh' > /entrypoint.sh && \
-    echo 'set -e' >> /entrypoint.sh && \
-    echo 'mkdir -p /var/log/supervisor /var/log/nginx /var/log/aix-db /var/log/minio /var/run /data' >> /entrypoint.sh && \
-    echo '# 确保环境变量传递给 supervisor' >> /entrypoint.sh && \
-    echo 'export PATH="/aix-db/.venv/bin:${PATH}"' >> /entrypoint.sh && \
-    echo 'export PYTHONUNBUFFERED=1' >> /entrypoint.sh && \
-    echo 'export PYTHONDONTWRITEBYTECODE=1' >> /entrypoint.sh && \
-    echo 'export OTEL_PYTHON_CONTEXT=contextvars_context' >> /entrypoint.sh && \
-    echo '# 增加 Sanic worker 启动超时时间（默认30秒太短）' >> /entrypoint.sh && \
-    echo 'export SANIC_WORKER_STATE_TTL=120' >> /entrypoint.sh && \
-    echo '# 启动 supervisord，输出到 aix-db 日志目录' >> /entrypoint.sh && \
-    echo 'exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf' >> /entrypoint.sh && \
-    chmod +x /entrypoint.sh
+# 复制启动脚本
+COPY docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# 数据卷
+VOLUME ["/var/lib/postgresql/data", "/data"]
 
 # 使用启动脚本启动服务
 CMD ["/entrypoint.sh"]
