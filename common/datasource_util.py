@@ -184,6 +184,12 @@ class DatasourceConnectionUtil:
                 # 注意：部分驱动（如 oracledb）不支持 connect_timeout 关键字参数
                 if ds_type == "oracle":
                     engine = create_engine(uri, pool_pre_ping=True)
+                elif ds_type == "sqlServer":
+                    # SQL Server 2022 需要禁用加密以兼容 pymssql
+                    # pymssql 不支持 connect_timeout，使用 login_timeout 和 timeout
+                    engine = create_engine(
+                        uri, pool_pre_ping=True, connect_args={"timeout": timeout, "login_timeout": timeout, "encryption": "off"}
+                    )
                 else:
                     engine = create_engine(uri, pool_pre_ping=True, connect_args={"connect_timeout": timeout})
                 with engine.connect() as conn:
@@ -382,14 +388,39 @@ class DatasourceConnectionUtil:
                 uri = DatasourceConnectionUtil.build_connection_uri(ds_type, config)
                 if ds_type == "oracle":
                     engine = create_engine(uri, pool_pre_ping=True)
+                elif ds_type == "sqlServer":
+                    # SQL Server 2022 需要禁用加密以兼容 pymssql
+                    # pymssql 不支持 connect_timeout，使用 login_timeout 和 timeout
+                    engine = create_engine(
+                        uri, pool_pre_ping=True, connect_args={"timeout": timeout, "login_timeout": timeout, "encryption": "off"}
+                    )
                 else:
                     engine = create_engine(uri, pool_pre_ping=True, connect_args={"connect_timeout": timeout})
                 with engine.connect() as conn:
                     result = conn.execute(text(sql), {"param": sql_param})
                     for row in result.fetchall():
+                        # 处理 bytes 类型（SQL Server 可能返回 bytes）
+                        table_name = row[0]
+                        table_comment = row[1] or ""
+                        if isinstance(table_comment, bytes):
+                            try:
+                                table_comment = table_comment.decode('utf-8')
+                            except UnicodeDecodeError:
+                                try:
+                                    table_comment = table_comment.decode('latin-1')
+                                except:
+                                    table_comment = ""
+                        if isinstance(table_name, bytes):
+                            try:
+                                table_name = table_name.decode('utf-8')
+                            except UnicodeDecodeError:
+                                try:
+                                    table_name = table_name.decode('latin-1')
+                                except:
+                                    table_name = str(table_name)
                         tables.append({
-                            "tableName": row[0],
-                            "tableComment": row[1] or "",
+                            "tableName": table_name,
+                            "tableComment": table_comment,
                         })
             else:
                 # Python 原生驱动的数据库
@@ -642,15 +673,33 @@ class DatasourceConnectionUtil:
                 uri = DatasourceConnectionUtil.build_connection_uri(ds_type, config)
                 if ds_type == "oracle":
                     engine = create_engine(uri, pool_pre_ping=True)
+                elif ds_type == "sqlServer":
+                    # SQL Server 2022 需要禁用加密以兼容 pymssql
+                    # pymssql 不支持 connect_timeout，使用 login_timeout 和 timeout
+                    engine = create_engine(
+                        uri, pool_pre_ping=True, connect_args={"timeout": timeout, "login_timeout": timeout, "encryption": "off"}
+                    )
                 else:
                     engine = create_engine(uri, pool_pre_ping=True, connect_args={"connect_timeout": timeout})
                 with engine.connect() as conn:
                     result = conn.execute(text(sql), {"param1": p1, "param2": p2})
                     for idx, row in enumerate(result.fetchall()):
+                        # 处理 bytes 类型（SQL Server 可能返回 bytes）
+                        def _decode_value(value):
+                            if isinstance(value, bytes):
+                                try:
+                                    return value.decode('utf-8')
+                                except UnicodeDecodeError:
+                                    try:
+                                        return value.decode('latin-1')
+                                    except:
+                                        return str(value)
+                            return value or ""
+                        
                         fields.append({
-                            "fieldName": row[0],
-                            "fieldType": row[1] or "",
-                            "fieldComment": row[2] or "",
+                            "fieldName": _decode_value(row[0]),
+                            "fieldType": _decode_value(row[1]),
+                            "fieldComment": _decode_value(row[2]),
                             "fieldIndex": idx
                         })
             else:
@@ -779,6 +828,12 @@ class DatasourceConnectionUtil:
                 uri = DatasourceConnectionUtil.build_connection_uri(ds_type, config)
                 if ds_type == "oracle":
                     engine = create_engine(uri, pool_pre_ping=True)
+                elif ds_type == "sqlServer":
+                    # SQL Server 2022 需要禁用加密以兼容 pymssql
+                    # pymssql 不支持 connect_timeout，使用 login_timeout 和 timeout
+                    engine = create_engine(
+                        uri, pool_pre_ping=True, connect_args={"timeout": timeout, "login_timeout": timeout, "encryption": "off"}
+                    )
                 else:
                     engine = create_engine(uri, pool_pre_ping=True, connect_args={"connect_timeout": timeout})
                 with engine.connect() as conn:

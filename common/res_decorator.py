@@ -33,6 +33,16 @@ class CustomJSONEncoder(json.JSONEncoder):
         elif isinstance(obj, datetime):
             # 处理 datetime 类型
             return obj.strftime("%Y-%m-%d %H:%M:%S")
+        elif isinstance(obj, bytes):
+            # 处理 bytes 类型（SQL Server 等数据库可能返回 bytes）
+            try:
+                return obj.decode('utf-8')
+            except UnicodeDecodeError:
+                # 如果 UTF-8 解码失败，尝试其他编码或返回空字符串
+                try:
+                    return obj.decode('latin-1')
+                except:
+                    return ""
         elif isinstance(obj, BaseModel):
             # 处理 Pydantic 模型
             return obj.model_dump()

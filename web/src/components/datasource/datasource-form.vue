@@ -24,6 +24,9 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits(['update:show', 'success'])
 
 // 数据源类型选项
+  // { label: 'AWS Redshift', value: 'redshift' },
+  // { label: 'Elasticsearch', value: 'es' },
+  // { label: 'Kingbase', value: 'kingbase' },
 const datasourceTypes = [
   { label: 'MySQL', value: 'mysql' },
   { label: 'PostgreSQL', value: 'pg' },
@@ -32,9 +35,6 @@ const datasourceTypes = [
   { label: 'ClickHouse', value: 'ck' },
   { label: '达梦', value: 'dm' },
   { label: 'Apache Doris', value: 'doris' },
-  { label: 'AWS Redshift', value: 'redshift' },
-  { label: 'Elasticsearch', value: 'es' },
-  { label: 'Kingbase', value: 'kingbase' },
   { label: 'StarRocks', value: 'starrocks' },
 ]
 

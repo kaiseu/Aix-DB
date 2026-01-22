@@ -58,7 +58,6 @@ dependencies = [
     "colorlog>=6.9.0",
     "faiss-cpu>=1.12.0",
     "tavily-python",
-    "deepagents",
     "langchain-ollama>=1.0.0a1",
     "dashscope>=1.25.0",
     "langchain-openai>=1.0.2",
@@ -73,6 +72,9 @@ dependencies = [
     "sentence-transformers>=5.2.0",
     "elasticsearch==8.17.1",
     "redshift-connector==2.1.4",
+    "clickhouse-sqlalchemy==0.3.2",
+    "deepagents>=0.3.7",
+    "deepagents-cli>=0.0.3",
 ]
 
 [[tool.uv.index]]

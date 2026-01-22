@@ -114,20 +114,28 @@ class DatabaseService:
     def __init__(self, datasource_id: int = None):
         self._engine = None
         self._datasource_id = datasource_id
-        self._datasource = None
-        
+        # 存储数据源的关键属性（避免 SQLAlchemy DetachedInstanceError）
+        self._datasource_type = None
+        self._datasource_config = None
+
         if datasource_id:
             try:
                 with db_pool.get_session() as session:
                     ds = session.query(Datasource).filter(Datasource.id == datasource_id).first()
                     if ds:
-                        self._datasource = ds
+                        # 在 session 内提取并存储需要的属性
+                        self._datasource_type = ds.type
+                        self._datasource_config = ds.configuration
                         # 检查数据源是否支持 SQLAlchemy 连接
                         db_enum = DB.get_db(ds.type, default_if_none=True)
                         if db_enum.connect_type == ConnectType.sqlalchemy:
                             config = DatasourceConfigUtil.decrypt_config(ds.configuration)
                             uri = DatasourceConnectionUtil.build_connection_uri(ds.type, config)
-                            self._engine = create_engine(uri)
+                            # SQL Server 2022 需要禁用加密以兼容 pymssql
+                            if ds.type == "sqlServer":
+                                self._engine = create_engine(uri, connect_args={"encryption": "off"})
+                            else:
+                                self._engine = create_engine(uri)
                             logger.info(f"Initialized DatabaseService with datasource_id: {datasource_id}")
                         else:
                             # 对于使用原生驱动的数据库（如 Doris），不创建 SQLAlchemy engine
@@ -195,8 +203,8 @@ class DatabaseService:
         """
         try:
             # 0. 对于原生驱动的数据库，直接从元数据表获取注释
-            if self._datasource and self._datasource_id:
-                db_enum = DB.get_db(self._datasource.type, default_if_none=True)
+            if self._datasource_type and self._datasource_id:
+                db_enum = DB.get_db(self._datasource_type, default_if_none=True)
                 if db_enum.connect_type == ConnectType.py_driver:
                     return self._get_table_comment_from_metadata(table_name)
 
@@ -291,6 +299,35 @@ class DatabaseService:
         # 兜底：没有注释或不支持，返回空字符串即可（不影响后续流程）
         return ""
 
+    def _get_table_comment_from_metadata(self, table_name: str) -> str:
+        """
+        从 t_datasource_table 元数据表获取表注释。
+        用于原生驱动的数据库（如 Doris、StarRocks 等），这些数据库无法通过 SQLAlchemy inspector 获取注释。
+
+        Args:
+            table_name: 表名
+
+        Returns:
+            表注释字符串，如果未找到则返回空字符串
+        """
+        if not self._datasource_id:
+            return ""
+
+        try:
+            with db_pool.get_session() as session:
+                table = session.query(DatasourceTable).filter(
+                    DatasourceTable.ds_id == self._datasource_id,
+                    DatasourceTable.table_name == table_name
+                ).first()
+
+                if table:
+                    # 优先使用自定义注释，其次使用原始注释
+                    return table.custom_comment or table.table_comment or ""
+                return ""
+        except Exception as e:
+            logger.warning(f"⚠️ 从元数据获取表 {table_name} 注释失败: {e}")
+            return ""
+
     @staticmethod
     def _build_document(table_name: str, table_info: dict) -> str:
         """
@@ -332,8 +369,8 @@ class DatabaseService:
 
         # 检查数据源是否使用原生驱动（非 SQLAlchemy）
         use_native_driver = False
-        if self._datasource and self._datasource_id:
-            db_enum = DB.get_db(self._datasource.type, default_if_none=True)
+        if self._datasource_type and self._datasource_id:
+            db_enum = DB.get_db(self._datasource_type, default_if_none=True)
             use_native_driver = db_enum.connect_type == ConnectType.py_driver
 
         if use_native_driver and self._datasource_id:
@@ -1228,11 +1265,12 @@ class DatabaseService:
         """
         执行生成的 SQL 语句。
         优先使用权限过滤后的SQL（filtered_sql），如果没有则使用原始生成的SQL（generated_sql）。
+        支持 SQLAlchemy 驱动和原生驱动两种执行方式。
         """
         # 优先使用权限过滤后的SQL，如果没有则使用原始生成的SQL
         sql_to_execute = state.get("filtered_sql") or state.get("generated_sql", "")
         sql_to_execute = sql_to_execute.strip() if sql_to_execute else ""
-        
+
         if not sql_to_execute:
             error_msg = "SQL 为空，无法执行"
             logger.warning(error_msg)
@@ -1245,15 +1283,32 @@ class DatabaseService:
             logger.info("使用权限过滤后的SQL执行")
         else:
             logger.info("使用原始生成的SQL执行")
-        
+
         try:
-            with self._engine.connect() as connection:
-                result = connection.execute(text(sql_to_execute))
-                result_data = result.fetchall()
-                columns = result.keys()
-                frame = pd.DataFrame(result_data, columns=columns)
-                state["execution_result"] = ExecutionResult(success=True, data=frame.to_dict(orient="records"))
-                logger.info(f"✅ SQL 执行成功，返回 {len(result_data)} 条记录")
+            # 检查数据源是否使用原生驱动
+            use_native_driver = False
+            if self._datasource_type and self._datasource_id:
+                db_enum = DB.get_db(self._datasource_type, default_if_none=True)
+                use_native_driver = db_enum.connect_type == ConnectType.py_driver
+
+            if use_native_driver and self._datasource_config:
+                # 对于原生驱动的数据库，使用 DatasourceConnectionUtil.execute_query
+                logger.info(f"使用原生驱动执行 SQL（数据源类型: {self._datasource_type}）")
+                config = DatasourceConfigUtil.decrypt_config(self._datasource_config)
+                result_data = DatasourceConnectionUtil.execute_query(
+                    self._datasource_type, config, sql_to_execute
+                )
+                state["execution_result"] = ExecutionResult(success=True, data=result_data)
+                logger.info(f"✅ SQL 执行成功（原生驱动），返回 {len(result_data)} 条记录")
+            else:
+                # 对于 SQLAlchemy 驱动的数据库，使用 engine 执行
+                with self._engine.connect() as connection:
+                    result = connection.execute(text(sql_to_execute))
+                    result_data = result.fetchall()
+                    columns = result.keys()
+                    frame = pd.DataFrame(result_data, columns=columns)
+                    state["execution_result"] = ExecutionResult(success=True, data=frame.to_dict(orient="records"))
+                    logger.info(f"✅ SQL 执行成功，返回 {len(result_data)} 条记录")
         except Exception as e:
             error_msg = f"执行 SQL 失败: {e}"
             logger.error(error_msg, exc_info=True)
