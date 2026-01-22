@@ -87,6 +87,7 @@ CREATE TABLE t_user (
   "userName" VARCHAR(200),
   password VARCHAR(300),
   mobile VARCHAR(100),
+  role VARCHAR(20) DEFAULT 'user',
   "createTime" TIMESTAMP,
   "updateTime" TIMESTAMP
 );
@@ -94,11 +95,12 @@ CREATE TABLE t_user (
 COMMENT ON COLUMN t_user."userName" IS '用户名称';
 COMMENT ON COLUMN t_user.password IS '密码';
 COMMENT ON COLUMN t_user.mobile IS '手机号';
+COMMENT ON COLUMN t_user.role IS '角色: admin/user';
 COMMENT ON COLUMN t_user."createTime" IS '创建时间';
 COMMENT ON COLUMN t_user."updateTime" IS '修改时间';
 
-INSERT INTO t_user (id, "userName", password, mobile, "createTime", "updateTime")
-VALUES (1, 'admin', '$2b$12$rmnFss1KlnSgcRKCv/Q8e.cSeK2OpV9qPg.7TFc7QyCAxdJEnEfDK', NULL, '2024-01-15 15:30:00', '2024-01-15 15:30:00');
+INSERT INTO t_user (id, "userName", password, mobile, role, "createTime", "updateTime")
+VALUES (1, 'admin', '$2b$12$rmnFss1KlnSgcRKCv/Q8e.cSeK2OpV9qPg.7TFc7QyCAxdJEnEfDK', NULL, 'admin', '2024-01-15 15:30:00', '2024-01-15 15:30:00');
 
 -- t_user_qa_record definition
 DROP TABLE IF EXISTS t_user_qa_record CASCADE;
@@ -209,7 +211,8 @@ COMMENT ON COLUMN t_ds_permission.expression_tree IS '行权限表达式树(JSON
 COMMENT ON COLUMN t_ds_permission.permissions IS '列权限配置(JSON)';
 
 
-CREATE TABLE IF NOT EXISTS t_terminology (
+DROP TABLE IF EXISTS t_terminology CASCADE;
+CREATE TABLE t_terminology (
     id BIGSERIAL PRIMARY KEY,
     oid BIGINT DEFAULT 1,
     pid BIGINT,
@@ -255,3 +258,19 @@ COMMENT ON COLUMN t_data_training.description IS '示例SQL';
 COMMENT ON COLUMN t_data_training.embedding IS '向量数据';
 COMMENT ON COLUMN t_data_training.enabled IS '是否启用';
 COMMENT ON COLUMN t_data_training.advanced_application IS '高级应用ID';
+
+-- t_datasource_auth definition
+DROP TABLE IF EXISTS t_datasource_auth CASCADE;
+CREATE TABLE t_datasource_auth (
+  id BIGSERIAL PRIMARY KEY,
+  datasource_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
+  enable BOOLEAN DEFAULT TRUE,
+  create_time TIMESTAMP
+);
+
+COMMENT ON TABLE t_datasource_auth IS '数据源授权表';
+COMMENT ON COLUMN t_datasource_auth.datasource_id IS '数据源ID';
+COMMENT ON COLUMN t_datasource_auth.user_id IS '用户ID';
+COMMENT ON COLUMN t_datasource_auth.enable IS '是否启用';
+COMMENT ON COLUMN t_datasource_auth.create_time IS '创建时间';

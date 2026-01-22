@@ -1,7 +1,16 @@
+# 开发调试用 docker-compose
+# 将后端源码挂载进容器，修改代码后自动生效（需要重启服务）
+#
+# 使用方法:
+#   docker compose -f docker-compose.dev.yaml up -d
+#
+# 重启后端服务（代码修改后）:
+#   docker exec aix-db-dev supervisorctl restart aix-db
+
 services:
   aix-db:
-    image: crpi-7xkxsdc0iki61l0q.cn-hangzhou.personal.cr.aliyuncs.com/apconw/aix-db:1.2.2
-    container_name: aix-db
+    image: apconw/aix-db:1.2.2
+    container_name: aix-db-dev
     restart: unless-stopped
     environment:
       # 时区
@@ -10,13 +19,16 @@ services:
       # 后端服务配置
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: ${SERVER_PORT:-8088}
-      SERVER_WORKERS: ${SERVER_WORKERS:-2}
+      SERVER_WORKERS: ${SERVER_WORKERS:-1}  # 开发模式用单 worker 方便调试
 
       # Langfuse 配置（可选）
       LANGFUSE_TRACING_ENABLED: ${LANGFUSE_TRACING_ENABLED:-false}
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY:-}
       LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY:-}
       LANGFUSE_BASE_URL: ${LANGFUSE_BASE_URL:-}
+
+      # 开发模式：启用更详细的日志
+      LOG_LEVEL: ${LOG_LEVEL:-DEBUG}
 
     ports:
       # 前端（通过 nginx）
@@ -31,13 +43,28 @@ services:
       - "19001:9001"
 
     volumes:
+      # ============ 后端源码挂载（开发调试用）============
+      # 核心模块
+      - ../common:/aix-db/common:ro
+      - ../config:/aix-db/config:ro
+      - ../constants:/aix-db/constants:ro
+      - ../controllers:/aix-db/controllers:ro
+      - ../model:/aix-db/model:ro
+      - ../models:/aix-db/models:ro
+      - ../services:/aix-db/services:ro
+      - ../agent:/aix-db/agent:ro
+      # 入口文件
+      - ../serv.py:/aix-db/serv.py:ro
+
+      # ============ 数据持久化 ============
       # PostgreSQL 数据目录
       - ./volume/pg_data:/var/lib/postgresql/data
       # PostgreSQL 初始化脚本（首次启动时自动执行）
       - ./init_sql.sql:/docker-entrypoint-initdb.d/init.sql:ro
       # MinIO 数据目录
       - ./volume/minio/data:/data
-      # 日志目录（可选）
+
+      # ============ 日志目录 ============
       - ./volume/logs/supervisor:/var/log/supervisor
       - ./volume/logs/nginx:/var/log/nginx
       - ./volume/logs/aix-db:/var/log/aix-db

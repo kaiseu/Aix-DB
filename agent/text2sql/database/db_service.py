@@ -2,7 +2,7 @@ import warnings
 
 from sqlalchemy import create_engine
 
-from common.datasource_util import DatasourceConfigUtil, DatasourceConnectionUtil
+from common.datasource_util import DatasourceConfigUtil, DatasourceConnectionUtil, DB, ConnectType
 from model import Datasource
 
 warnings.filterwarnings("ignore", message=".*pkg_resources.*deprecated.*")
@@ -114,18 +114,32 @@ class DatabaseService:
     def __init__(self, datasource_id: int = None):
         self._engine = None
         self._datasource_id = datasource_id
-        self._datasource = None
-        
+        # 存储数据源的关键属性（避免 SQLAlchemy DetachedInstanceError）
+        self._datasource_type = None
+        self._datasource_config = None
+
         if datasource_id:
             try:
                 with db_pool.get_session() as session:
                     ds = session.query(Datasource).filter(Datasource.id == datasource_id).first()
                     if ds:
-                        self._datasource = ds
-                        config = DatasourceConfigUtil.decrypt_config(ds.configuration)
-                        uri = DatasourceConnectionUtil.build_connection_uri(ds.type, config)
-                        self._engine = create_engine(uri)
-                        logger.info(f"Initialized DatabaseService with datasource_id: {datasource_id}")
+                        # 在 session 内提取并存储需要的属性
+                        self._datasource_type = ds.type
+                        self._datasource_config = ds.configuration
+                        # 检查数据源是否支持 SQLAlchemy 连接
+                        db_enum = DB.get_db(ds.type, default_if_none=True)
+                        if db_enum.connect_type == ConnectType.sqlalchemy:
+                            config = DatasourceConfigUtil.decrypt_config(ds.configuration)
+                            uri = DatasourceConnectionUtil.build_connection_uri(ds.type, config)
+                            # SQL Server 2022 需要禁用加密以兼容 pymssql
+                            if ds.type == "sqlServer":
+                                self._engine = create_engine(uri, connect_args={"encryption": "off"})
+                            else:
+                                self._engine = create_engine(uri)
+                            logger.info(f"Initialized DatabaseService with datasource_id: {datasource_id}")
+                        else:
+                            # 对于使用原生驱动的数据库（如 Doris），不创建 SQLAlchemy engine
+                            logger.info(f"Datasource {datasource_id} ({ds.type}) uses native driver, skipping SQLAlchemy engine")
             except Exception as e:
                 logger.error(f"Failed to initialize datasource {datasource_id}: {e}")
 
@@ -184,23 +198,134 @@ class DatabaseService:
 
     def _get_table_comment(self, table_name: str) -> str:
         """
-        从 information_schema 中获取指定表的注释。
+        获取指定表的注释，兼容当前支持的多种数据源类型。
+        优先使用 SQLAlchemy Inspector 的统一接口，不同数据库再做兜底处理。
         """
         try:
-            query = text(
-                """
-                SELECT table_comment
-                FROM information_schema.tables
-                WHERE table_schema = DATABASE()
-                  AND table_name = :table_name;
-                """
-            )
+            # 0. 对于原生驱动的数据库，直接从元数据表获取注释
+            if self._datasource_type and self._datasource_id:
+                db_enum = DB.get_db(self._datasource_type, default_if_none=True)
+                if db_enum.connect_type == ConnectType.py_driver:
+                    return self._get_table_comment_from_metadata(table_name)
+
+            # 1. 优先使用 SQLAlchemy 的 inspector 接口（支持多数主流数据库）
+            try:
+                inspector = inspect(self._engine)
+                info = inspector.get_table_comment(table_name)
+                if isinstance(info, dict):
+                    comment = info.get("text") or info.get("comment") or ""
+                else:
+                    comment = info or ""
+                if comment:
+                    return str(comment).strip()
+            except Exception as e:
+                logger.debug(f"Inspector 获取表 {table_name} 注释失败，尝试方言级兜底: {e}")
+
+            # 2. 根据方言名称做兜底处理，避免使用单一 MySQL 语法在其它数据库上报错
+            dialect_name = getattr(getattr(self._engine, "dialect", None), "name", "") or ""
+            dialect_name = dialect_name.lower()
+
             with self._engine.connect() as conn:
-                result = conn.execute(query, {"table_name": table_name})
-                row = result.fetchone()
-                return (row[0] or "").strip()
+                # MySQL / MariaDB
+                if dialect_name in ("mysql", "mariadb"):
+                    query = text(
+                        """
+                        SELECT table_comment
+                        FROM information_schema.tables
+                        WHERE table_schema = DATABASE()
+                          AND table_name = :table_name
+                        """
+                    )
+                    row = conn.execute(query, {"table_name": table_name}).fetchone()
+                    return (row[0] or "").strip() if row and row[0] else ""
+
+                # PostgreSQL / Kingbase / Redshift 等 PG 协议
+                if dialect_name in ("postgresql", "postgres"):
+                    query = text(
+                        """
+                        SELECT obj_description(c.oid) AS table_comment
+                        FROM pg_class c
+                        WHERE c.relname = :table_name
+                          AND c.relkind IN ('r','v','m','f','p')
+                        """
+                    )
+                    row = conn.execute(query, {"table_name": table_name}).fetchone()
+                    return (row[0] or "").strip() if row and row[0] else ""
+
+                # SQL Server
+                if dialect_name in ("mssql", "sqlserver"):
+                    query = text(
+                        """
+                        SELECT CAST(ep.value AS NVARCHAR(4000)) AS table_comment
+                        FROM sys.tables t
+                        LEFT JOIN sys.extended_properties ep
+                          ON ep.major_id = t.object_id
+                         AND ep.minor_id = 0
+                         AND ep.name = 'MS_Description'
+                        WHERE t.name = :table_name
+                        """
+                    )
+                    row = conn.execute(query, {"table_name": table_name}).fetchone()
+                    return (row[0] or "").strip() if row and row[0] else ""
+
+                # Oracle
+                if "oracle" in dialect_name:
+                    query = text(
+                        """
+                        SELECT comments
+                        FROM user_tab_comments
+                        WHERE table_name = :table_name
+                        """
+                    )
+                    row = conn.execute(query, {"table_name": table_name.upper()}).fetchone()
+                    return (row[0] or "").strip() if row and row[0] else ""
+
+                # ClickHouse
+                if "clickhouse" in dialect_name:
+                    query = text(
+                        """
+                        SELECT comment
+                        FROM system.tables
+                        WHERE database = currentDatabase()
+                          AND name = :table_name
+                        """
+                    )
+                    row = conn.execute(query, {"table_name": table_name}).fetchone()
+                    return (row[0] or "").strip() if row and row[0] else ""
+
         except Exception as e:
             logger.warning(f"⚠️ 获取表 {table_name} 注释失败: {e}")
+
+        # 兜底：没有注释或不支持，返回空字符串即可（不影响后续流程）
+        return ""
+
+    def _get_table_comment_from_metadata(self, table_name: str) -> str:
+        """
+        从 t_datasource_table 元数据表获取表注释。
+        用于原生驱动的数据库（如 Doris、StarRocks 等），这些数据库无法通过 SQLAlchemy inspector 获取注释。
+
+        Args:
+            table_name: 表名
+
+        Returns:
+            表注释字符串，如果未找到则返回空字符串
+        """
+        if not self._datasource_id:
+            return ""
+
+        try:
+            with db_pool.get_session() as session:
+                table = session.query(DatasourceTable).filter(
+                    DatasourceTable.ds_id == self._datasource_id,
+                    DatasourceTable.table_name == table_name
+                ).first()
+
+                if table:
+                    # 优先使用自定义注释，其次使用原始注释
+                    return table.custom_comment or table.table_comment or ""
+                return ""
+        except Exception as e:
+            logger.warning(f"⚠️ 从元数据获取表 {table_name} 注释失败: {e}")
             return ""
 
     @staticmethod
@@ -220,16 +345,16 @@ class DatabaseService:
     def _fetch_all_table_info(self, user_id: Optional[int] = None, use_cache: bool = True) -> Dict[str, Dict]:
         """
         获取数据库中所有表的结构信息（带权限过滤和缓存）。
-        
+
         Args:
             user_id: 用户ID，用于权限过滤（管理员不应用权限过滤）
             use_cache: 是否使用缓存
-            
+
         Returns:
             表信息字典
         """
         from common.permission_util import is_admin
-        
+
         # 检查缓存
         cache_key = (self._datasource_id or 0, user_id)
         if use_cache:
@@ -239,8 +364,19 @@ class DatabaseService:
                     if time.time() - cached_time < CACHE_TTL:
                         logger.debug(f"✅ 使用缓存的表结构信息 (datasource_id={self._datasource_id}, user_id={user_id})")
                         return cached_data
-        
+
         start_time = time.time()
+
+        # 检查数据源是否使用原生驱动（非 SQLAlchemy）
+        use_native_driver = False
+        if self._datasource_type and self._datasource_id:
+            db_enum = DB.get_db(self._datasource_type, default_if_none=True)
+            use_native_driver = db_enum.connect_type == ConnectType.py_driver
+
+        if use_native_driver and self._datasource_id:
+            # 对于原生驱动的数据库（如 Doris、StarRocks 等），从 t_datasource_table 获取表结构
+            return self._fetch_table_info_from_metadata(user_id, use_cache, start_time)
+
         inspector = inspect(self._engine)
         table_names = inspector.get_table_names()
         logger.info(f"🔍 开始加载 {len(table_names)} 张表的 schema 信息...")
@@ -372,6 +508,82 @@ class DatabaseService:
         
         return table_info
 
+    def _fetch_table_info_from_metadata(self, user_id: Optional[int], use_cache: bool, start_time: float) -> Dict[str, Dict]:
+        """
+        从 t_datasource_table 和 t_datasource_field 获取表结构信息。
+        用于原生驱动的数据库（如 Doris、StarRocks 等），这些数据库不能通过 SQLAlchemy inspect 获取表结构。
+
+        Args:
+            user_id: 用户ID，用于权限过滤
+            use_cache: 是否使用缓存
+            start_time: 开始时间，用于计算耗时
+
+        Returns:
+            表信息字典
+        """
+        from common.permission_util import is_admin
+
+        cache_key = (self._datasource_id or 0, user_id)
+        table_info = {}
+
+        try:
+            with db_pool.get_session() as session:
+                # 获取该数据源下所有已勾选的表
+                tables = session.query(DatasourceTable).filter(
+                    DatasourceTable.ds_id == self._datasource_id,
+                    DatasourceTable.checked == True
+                ).all()
+
+                logger.info(f"🔍 从元数据加载 {len(tables)} 张表的 schema 信息（原生驱动模式）...")
+
+                # 获取所有表的字段
+                table_ids = [t.id for t in tables]
+                fields = session.query(DatasourceField).filter(
+                    DatasourceField.ds_id == self._datasource_id,
+                    DatasourceField.table_id.in_(table_ids),
+                    DatasourceField.checked == True
+                ).all()
+
+                # 按表ID分组字段
+                fields_by_table = {}
+                for field in fields:
+                    if field.table_id not in fields_by_table:
+                        fields_by_table[field.table_id] = []
+                    fields_by_table[field.table_id].append(field)
+
+                # 构建表信息
+                for table in tables:
+                    table_fields = fields_by_table.get(table.id, [])
+                    if not table_fields:
+                        logger.debug(f"⚠️ 表 {table.table_name} 无可用字段，跳过")
+                        continue
+
+                    columns = {}
+                    for field in table_fields:
+                        columns[field.field_name] = {
+                            "type": field.field_type or "",
+                            "comment": field.custom_comment or field.field_comment or "",
+                        }
+
+                    table_info[table.table_name] = {
+                        "columns": columns,
+                        "foreign_keys": [],  # 原生驱动暂不支持外键信息
+                        "table_comment": table.custom_comment or table.table_comment or "",
+                    }
+
+        except Exception as e:
+            logger.error(f"❌ 从元数据获取表结构失败: {e}", exc_info=True)
+            return {}
+
+        elapsed = time.time() - start_time
+        logger.info(f"✅ 成功加载 {len(table_info)} 张表（原生驱动模式），耗时 {elapsed:.2f}s")
+
+        # 更新缓存
+        if use_cache:
+            with _cache_lock:
+                _table_info_cache[cache_key] = (table_info, time.time())
+
+        return table_info
 
     def _get_precomputed_embeddings(self, table_info: Dict[str, Dict]) -> Tuple[Optional[np.ndarray], List[str], List[str]]:
         """
@@ -386,14 +598,15 @@ class DatabaseService:
         
         try:
             with db_pool.get_session() as session:
-                # 查询数据源下的所有表
-                tables = session.query(DatasourceTable).filter(
-                    DatasourceTable.ds_id == self._datasource_id,
-                    DatasourceTable.table_name.in_(list(table_info.keys()))
-                ).all()
+                # 查询数据源下的所有表（不再按表名过滤，避免大小写不一致导致漏查）
+                tables = (
+                    session.query(DatasourceTable)
+                    .filter(DatasourceTable.ds_id == self._datasource_id)
+                    .all()
+                )
                 
-                # 构建表名到表的映射
-                table_map = {table.table_name: table for table in tables}
+                # 构建表名到表的映射（不区分大小写，兼容 Oracle 等会返回大写表名的数据库）
+                table_map = {str(table.table_name).upper(): table for table in tables}
                 
                 # 收集有预计算 embedding 的表
                 precomputed_embeddings = []
@@ -401,7 +614,8 @@ class DatabaseService:
                 missing_table_names = []
                 
                 for table_name, info in table_info.items():
-                    table = table_map.get(table_name)
+                    # 统一按大写匹配，避免 T_ALARM_INFO / t_alarm_info 不一致导致无法命中
+                    table = table_map.get(str(table_name).upper())
                     # 检查是否有 embedding 字段（通过 hasattr 检查，避免字段不存在时报错）
                     if table and hasattr(table, 'embedding') and table.embedding:
                         try:
@@ -1014,17 +1228,22 @@ class DatabaseService:
             # 构建输出（表关系补充将在 SQL 生成阶段进行）
             filtered_info = {name: all_table_info[name] for name in final_table_names if name in all_table_info}
 
-            # 打印结果摘要
-            print(f"\n🔍 用户查询: {user_query}")
-            print("📊 检索与排序结果:")
+            # 打印结果摘要（使用 logger 以便统一格式化）
+            logger.info("🔍 用户查询: %s", user_query)
+            logger.info("📊 检索与排序结果:")
             for i, table_name in enumerate(final_table_names[:TABLE_RETURN_COUNT]):
                 if table_name in self._table_names:
                     bm25_idx = self._table_names.index(table_name)
                     bm25_rank = bm25_top_indices.index(bm25_idx) + 1 if bm25_idx in bm25_top_indices else "-"
                     vector_rank = vector_top_indices.index(bm25_idx) + 1 if bm25_idx in vector_top_indices else "-"
                     rerank_score = next((score for name, score in reranked_results if name == table_name), 0.0)
-                    print(
-                        f"  {i + 1}. {table_name:<15} | BM25: {bm25_rank:>2} | Vector: {vector_rank:>2} | Rerank: {rerank_score:.3f}"
+                    logger.info(
+                        "  %s. %-15s | BM25: %2s | Vector: %2s | Rerank: %.3f",
+                        i + 1,
+                        table_name,
+                        bm25_rank,
+                        vector_rank,
+                        rerank_score,
                     )
 
             state["db_info"] = filtered_info
@@ -1046,11 +1265,12 @@ class DatabaseService:
         """
         执行生成的 SQL 语句。
         优先使用权限过滤后的SQL（filtered_sql），如果没有则使用原始生成的SQL（generated_sql）。
+        支持 SQLAlchemy 驱动和原生驱动两种执行方式。
         """
         # 优先使用权限过滤后的SQL，如果没有则使用原始生成的SQL
         sql_to_execute = state.get("filtered_sql") or state.get("generated_sql", "")
         sql_to_execute = sql_to_execute.strip() if sql_to_execute else ""
-        
+
         if not sql_to_execute:
             error_msg = "SQL 为空，无法执行"
             logger.warning(error_msg)
@@ -1063,15 +1283,32 @@ class DatabaseService:
             logger.info("使用权限过滤后的SQL执行")
         else:
             logger.info("使用原始生成的SQL执行")
-        
+
         try:
-            with self._engine.connect() as connection:
-                result = connection.execute(text(sql_to_execute))
-                result_data = result.fetchall()
-                columns = result.keys()
-                frame = pd.DataFrame(result_data, columns=columns)
-                state["execution_result"] = ExecutionResult(success=True, data=frame.to_dict(orient="records"))
-                logger.info(f"✅ SQL 执行成功，返回 {len(result_data)} 条记录")
+            # 检查数据源是否使用原生驱动
+            use_native_driver = False
+            if self._datasource_type and self._datasource_id:
+                db_enum = DB.get_db(self._datasource_type, default_if_none=True)
+                use_native_driver = db_enum.connect_type == ConnectType.py_driver
+
+            if use_native_driver and self._datasource_config:
+                # 对于原生驱动的数据库，使用 DatasourceConnectionUtil.execute_query
+                logger.info(f"使用原生驱动执行 SQL（数据源类型: {self._datasource_type}）")
+                config = DatasourceConfigUtil.decrypt_config(self._datasource_config)
+                result_data = DatasourceConnectionUtil.execute_query(
+                    self._datasource_type, config, sql_to_execute
+                )
+                state["execution_result"] = ExecutionResult(success=True, data=result_data)
+                logger.info(f"✅ SQL 执行成功（原生驱动），返回 {len(result_data)} 条记录")
+            else:
+                # 对于 SQLAlchemy 驱动的数据库，使用 engine 执行
+                with self._engine.connect() as connection:
+                    result = connection.execute(text(sql_to_execute))
+                    result_data = result.fetchall()
+                    columns = result.keys()
+                    frame = pd.DataFrame(result_data, columns=columns)
+                    state["execution_result"] = ExecutionResult(success=True, data=frame.to_dict(orient="records"))
+                    logger.info(f"✅ SQL 执行成功，返回 {len(result_data)} 条记录")
         except Exception as e:
             error_msg = f"执行 SQL 失败: {e}"
             logger.error(error_msg, exc_info=True)
