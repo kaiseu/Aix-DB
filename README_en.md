@@ -167,25 +167,11 @@ npm run dev
 
 ## Tech Stack
 
-### Backend
-| Component | Technology |
-|-----------|------------|
-| Web Framework | Sanic 25.x |
-| ORM | SQLAlchemy 2.x |
-| LLM Framework | LangChain, LangGraph |
-| AI Models | OpenAI, Anthropic, DeepSeek, Qwen, Ollama |
-| Vector Search | FAISS, Chroma, pgvector |
-| Graph Database | Neo4j |
-| File Storage | MinIO |
+**Backend**: Sanic · SQLAlchemy · LangChain/LangGraph · Neo4j · FAISS/Chroma · MinIO
 
-### Frontend
-| Component | Technology |
-|-----------|------------|
-| Framework | Vue 3 + TypeScript |
-| Build Tool | Vite 5 |
-| UI Library | Naive UI |
-| Charts | ECharts, AntV |
-| State Management | Pinia |
+**Frontend**: Vue 3 · TypeScript · Vite 5 · Naive UI · ECharts · AntV
+
+**AI Models**: OpenAI · Anthropic · DeepSeek · Qwen · Ollama
 
 ---
 

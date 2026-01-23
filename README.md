@@ -167,25 +167,11 @@ npm run dev
 
 ## 技术栈
 
-### 后端
-| 组件 | 技术 |
-|-----|------|
-| Web 框架 | Sanic 25.x |
-| ORM | SQLAlchemy 2.x |
-| LLM 框架 | LangChain, LangGraph |
-| AI 模型 | OpenAI, Anthropic, DeepSeek, Qwen, Ollama |
-| 向量检索 | FAISS, Chroma, pgvector |
-| 图数据库 | Neo4j |
-| 文件存储 | MinIO |
+**后端**：Sanic · SQLAlchemy · LangChain/LangGraph · Neo4j · FAISS/Chroma · MinIO
 
-### 前端
-| 组件 | 技术 |
-|-----|------|
-| 框架 | Vue 3 + TypeScript |
-| 构建工具 | Vite 5 |
-| UI 组件库 | Naive UI |
-| 图表 | ECharts, AntV |
-| 状态管理 | Pinia |
+**前端**：Vue 3 · TypeScript · Vite 5 · Naive UI · ECharts · AntV
+
+**AI 模型**：OpenAI · Anthropic · DeepSeek · Qwen · Ollama
 
 ---
 
@@ -214,7 +200,7 @@ npm run dev
 
 <table align="center">
   <tr>
-    <td align="center"><b>微信交流群</b></td>
+    <td align="center"><b>微信交流群</b><br/><small>（备注进群）</small></td>
     <td align="center"><b>微信公众号</b></td>
   </tr>
   <tr>
