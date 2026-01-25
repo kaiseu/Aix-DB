@@ -99,7 +99,7 @@ Aix-DB 基于 **LangChain/LangGraph** 框架，结合 **MCP Skills** 多智能�
 ### 使用 Docker 部署（推荐）
 
 ```bash
-docker run \
+docker run -d \
   --name aix-db \
   --restart unless-stopped \
   -e TZ=Asia/Shanghai \
@@ -112,7 +112,6 @@ docker run \
   -p 19000:9000 \
   -p 19001:9001 \
   -v ./volume/pg_data:/var/lib/postgresql/data \
-  -v ./init_sql.sql:/docker-entrypoint-initdb.d/init.sql:ro \
   -v ./volume/minio/data:/data \
   -v ./volume/logs/supervisor:/var/log/supervisor \
   -v ./volume/logs/nginx:/var/log/nginx \

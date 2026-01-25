@@ -166,14 +166,14 @@ const readTextStream = async () => {
     readIsOver.value = true
     emit('completed')
     emit('chartready')
-    
+
     // 如果 reader 不存在，直接返回
     if (!props.reader) {
       return
     }
     // 如果 reader 存在，继续处理流，但图表已经在上面设置了
   }
-  
+
   if (!props.reader) {
     return
   }
@@ -357,7 +357,7 @@ watch(
       isCompleted.value = true
       readIsOver.value = true
     }
-    
+
     previousReader.value = newReader
   },
   {
@@ -425,18 +425,18 @@ const handleRecycleAquestion = function () {
     })
     return
   }
-  
+
   // 如果已禁用，直接返回
   if (businessStore.suggestedDisabled) {
     return
   }
-  
+
   // 禁用所有推荐问题按钮（全局状态，影响所有历史对话）
   businessStore.set_suggested_disabled(true)
-  
+
   // 触发重新生成事件
   emit('recycleQa')
-  
+
   // 自动滚动到底部
   nextTick(() => {
     scrollToBottom()
@@ -464,23 +464,23 @@ const isWaitingForBackendResponse = computed(() => {
   if (isCompleted.value) {
     return false
   }
-  
+
   // 优先级2：对于历史对话，如果没有 reader，不应该被认为是等待后端响应
   if (props.isView && !props.reader) {
     return false
   }
-  
+
   // 优先级3：如果正在加载中（readerLoading），说明正在等待
   if (readerLoading.value) {
     return true
   }
-  
+
   // 优先级4：如果有 reader 存在，说明正在等待后端响应
   // 无论 readIsOver 状态如何，只要 reader 存在且对话未完成，就认为是等待中
   if (props.reader) {
     return true
   }
-  
+
   // 其他情况：不在等待中
   return false
 })
@@ -495,21 +495,21 @@ const onSuggested = function (index: number) {
     })
     return
   }
-  
+
   // 如果已禁用，直接返回
   if (businessStore.suggestedDisabled) {
     return
   }
-  
+
   // 禁用所有推荐问题按钮（全局状态，影响所有历史对话）
   businessStore.set_suggested_disabled(true)
-  
+
   // 优先使用 props.chartData（历史对话），否则使用全局 store（实时对话）
   const chartData = props.chartData || businessStore.writerList?.data
   const recommendedQuestions = chartData?.recommended_questions || []
   if (recommendedQuestions && recommendedQuestions.length > index) {
     emit('suggested', recommendedQuestions[index])
-    
+
     // 自动滚动到底部
     nextTick(() => {
       scrollToBottom()
@@ -535,7 +535,7 @@ const qaOptions = [
   { icon: 'i-hugeicons:ai-chat-02', label: '智能问答', value: 'COMMON_QA', color: '#7E6BF2' },
   { icon: 'i-hugeicons:database-01', label: '数据问答', value: 'DATABASE_QA', color: '#10b981' },
   { icon: 'i-hugeicons:table-01', label: '表格问答', value: 'FILEDATA_QA', color: '#f59e0b' },
-  { icon: 'i-hugeicons:search-02', label: '深度搜索', value: 'REPORT_QA', color: '#8b5cf6' },
+  { icon: 'i-hugeicons:search-02', label: '深度问数', value: 'REPORT_QA', color: '#8b5cf6' },
 ]
 
 const currentQaOption = computed(() => {
@@ -812,12 +812,12 @@ const currentQaOption = computed(() => {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   font-feature-settings: "kern" 1, "liga" 1;
-  
+
   // 确保所有子元素也使用正确的字体
   * {
     font-family: "Plus Jakarta Sans", $font-family-base !important;
   }
-  
+
   // 代码块保持等宽字体
   code, pre, kbd, samp {
     font-family: $font-family-mono !important;

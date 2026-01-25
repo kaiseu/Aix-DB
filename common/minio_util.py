@@ -7,10 +7,11 @@ import os
 import traceback
 from datetime import timedelta
 from uuid import uuid4
-import requests
+
 import pandas as pd
 import pymupdf
 import pymupdf4llm
+import requests
 from docx import Document
 from minio import Minio, S3Error
 from sanic import Request
@@ -36,10 +37,15 @@ class MinioUtils:
         minio_endpoint = os.getenv("MINIO_ENDPOINT", "127.0.0.1:9000")
         access_key = os.getenv("MINIO_ACCESS_KEY", "admin")
         secret_key = os.getenv("MINIO_SECRET_KEY", "admin123")
-        return Minio(endpoint=minio_endpoint, access_key=access_key, secret_key=secret_key, secure=False)
+        return Minio(
+            endpoint=minio_endpoint,
+            access_key=access_key,
+            secret_key=secret_key,
+            secure=False,
+        )
 
-    def ensure_bucket(self, bucket_name: str) -> None:
-        """确保bucket存在，不存在则创建"""
+    def ensure_bucket(self, bucket_name: str, public: bool = True) -> None:
+        """确保bucket存在，不存在则创建，并设置为public（如果指定）"""
         try:
             found = self.client.bucket_exists(bucket_name=bucket_name)
             if not found:
@@ -47,6 +53,31 @@ class MinioUtils:
                 logger.info(f"Bucket '{bucket_name}' created.")
             else:
                 logger.info(f"Bucket '{bucket_name}' already exists.")
+
+            # 设置 bucket 为 public（允许匿名读取）
+            if public:
+                try:
+                    # MinIO public read 策略（允许匿名用户读取对象）
+                    public_policy = {
+                        "Version": "2012-10-17",
+                        "Statement": [
+                            {
+                                "Effect": "Allow",
+                                "Principal": {"AWS": "*"},
+                                "Action": ["s3:GetObject"],
+                                "Resource": [f"arn:aws:s3:::{bucket_name}/*"],
+                            }
+                        ],
+                    }
+                    self.client.set_bucket_policy(
+                        bucket_name=bucket_name, policy=json.dumps(public_policy)
+                    )
+                    logger.info(f"Bucket '{bucket_name}' set to public.")
+                except S3Error as policy_err:
+                    # 如果设置策略失败，记录警告但不阻止操作
+                    logger.warning(
+                        f"Failed to set public policy for bucket '{bucket_name}': {policy_err}"
+                    )
         except S3Error as err:
             logger.error(f"Error checking or creating bucket {bucket_name}: {err}")
             raise MyException(SysCode.c_9999)
@@ -91,7 +122,10 @@ class MinioUtils:
             raise MyException(SysCode.c_9999)
 
     def upload_to_minio_form_stream(
-        self, file_stream: io.BytesIO, bucket_name: str = "filedata", file_name: str | None = None
+        self,
+        file_stream: io.BytesIO,
+        bucket_name: str = "filedata",
+        file_name: str | None = None,
     ) -> str | None:
         """
         将给定的字节流上传到MinIO，并返回上传文件的键（key）。
@@ -105,12 +139,20 @@ class MinioUtils:
             self.ensure_bucket(bucket_name)
 
             if not file_name:
-                file_extension = mimetypes.guess_extension(mimetypes.guess_type(file_stream.getvalue())[0]) or ""
+                file_extension = (
+                    mimetypes.guess_extension(
+                        mimetypes.guess_type(file_stream.getvalue())[0]
+                    )
+                    or ""
+                )
                 file_name = f"{uuid4()}{file_extension}"
 
             file_stream.seek(0)
             file_length = len(file_stream.getvalue())
-            content_type, _ = mimetypes.guess_type(file_name) or ("application/octet-stream", None)
+            content_type, _ = mimetypes.guess_type(file_name) or (
+                "application/octet-stream",
+                None,
+            )
 
             self.client.put_object(
                 bucket_name=bucket_name,
@@ -125,7 +167,9 @@ class MinioUtils:
             logger.error(f"An error occurred while uploading to MinIO: {e}")
             return None
 
-    def get_file_url_by_key(self, bucket_name: str = "filedata", object_key: str | None = None) -> str:
+    def get_file_url_by_key(
+        self, bucket_name: str = "filedata", object_key: str | None = None
+    ) -> str:
         """
         通过object_key获取文件url
         """
@@ -133,14 +177,18 @@ class MinioUtils:
             if not object_key:
                 raise MyException(SysCode.c_9999, "object_key不能为空")
             return self.client.presigned_get_object(
-                bucket_name=bucket_name, object_name=object_key, expires=timedelta(days=7)
+                bucket_name=bucket_name,
+                object_name=object_key,
+                expires=timedelta(days=7),
             )
         except Exception as err:
             logger.error(f"Error getting file URL by key: {err}")
             traceback.print_exception(err)
             raise MyException(SysCode.c_9999)
 
-    def upload_file_and_parse_from_request(self, request: Request, bucket_name: str = "filedata") -> dict:
+    def upload_file_and_parse_from_request(
+        self, request: Request, bucket_name: str = "filedata"
+    ) -> dict:
         """
         上传文件并解析文件内容，返回文件内容key。
 
@@ -165,7 +213,9 @@ class MinioUtils:
             if len(file_data.body) > 50 * 1024 * 1024:
                 raise MyException(SysCode.c_9999, "文件大小超出限制")
 
-            source_file_key = self.upload_file_from_request(request, bucket_name, object_name)
+            source_file_key = self.upload_file_from_request(
+                request, bucket_name, object_name
+            )
 
             # 校验 MIME 类型是否支持（增强安全性）
             allowed_mimes = {
@@ -220,7 +270,9 @@ class MinioUtils:
 
             # 创建一个txt文件并上传
             parse_file_key = self.upload_to_minio_form_stream(
-                io.BytesIO(full_text.encode("utf-8")), bucket_name, object_name + file_suffix
+                io.BytesIO(full_text.encode("utf-8")),
+                bucket_name,
+                object_name + file_suffix,
             )
             return {
                 "source_file_key": source_file_key["object_key"],
@@ -303,7 +355,10 @@ class MinioUtils:
                 content = io.BytesIO(content)
 
             # 根据 MIME 类型智能选择引擎，避免 xlrd 读取 .xlsx
-            if mime_type == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":  # .xlsx
+            if (
+                mime_type
+                == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            ):  # .xlsx
                 engine = "openpyxl"
             elif mime_type == "application/vnd.ms-excel":  # .xls
                 engine = "xlrd"
@@ -314,7 +369,12 @@ class MinioUtils:
 
             xls = pd.ExcelFile(content, engine=engine)
 
-            result = {"file_type": "excel", "mime_type": mime_type, "engine_used": engine, "sheets": []}
+            result = {
+                "file_type": "excel",
+                "mime_type": mime_type,
+                "engine_used": engine,
+                "sheets": [],
+            }
 
             for sheet_name in xls.sheet_names:
                 # 读取时不自动推断 header，保留原始行列结构
@@ -382,7 +442,9 @@ class MinioUtils:
             logger.error(f"读取文本时出错: {e}")
             raise MyException(SysCode.c_9999, "PDF 解析失败") from e
 
-    def get_files_content_as_markdown(self, file_info_list: list, bucket_name: str = "filedata") -> str:
+    def get_files_content_as_markdown(
+        self, file_info_list: list, bucket_name: str = "filedata"
+    ) -> str:
         """
         根据文件信息列表获取文件内容并拼接成Markdown格式
 
@@ -404,7 +466,9 @@ class MinioUtils:
 
             try:
                 # 获取文件内容
-                response = self.client.get_object(bucket_name=bucket_name, object_name=parse_file_key)
+                response = self.client.get_object(
+                    bucket_name=bucket_name, object_name=parse_file_key
+                )
                 content = response.data.decode("utf-8")
                 response.close()
                 response.release_conn()
@@ -447,17 +511,24 @@ class MinioUtils:
 
             files = {"file": ("document.pdf", pdf_bytes, "application/pdf")}
 
-            response = requests.post(mineru_api_url, files=files, headers=headers, timeout=300)  # 支持大文件，超时5分钟
+            response = requests.post(
+                mineru_api_url, files=files, headers=headers, timeout=300
+            )  # 支持大文件，超时5分钟
 
             if response.status_code != 200:
-                raise MyException(SysCode.c_9999, f"MinerU服务返回错误: {response.status_code}")
+                raise MyException(
+                    SysCode.c_9999, f"MinerU服务返回错误: {response.status_code}"
+                )
 
             result = response.json()
             return result.get("text", "") or result.get("content", "")
 
         except requests.exceptions.RequestException as e:
             logger.error(f"调用MinerU服务失败: {e}")
-            raise MyException(SysCode.c_9999, "OCR服务不可用，请检查网络或服务状态") from e
+            raise MyException(
+                SysCode.c_9999, "OCR服务不可用，请检查网络或服务状态"
+            ) from e
         except Exception as e:
             logger.error(f"解析MinerU返回结果失败: {e}")
+            raise MyException(SysCode.c_9999, "OCR解析结果异常") from e
             raise MyException(SysCode.c_9999, "OCR解析结果异常") from e

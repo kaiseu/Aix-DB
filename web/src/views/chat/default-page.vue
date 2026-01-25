@@ -3,6 +3,7 @@ import type { UploadFileInfo } from 'naive-ui'
 import { computed, onMounted, ref } from 'vue'
 import { fetch_datasource_list } from '@/api/datasource'
 import { fetch_model_list, set_default_model } from '@/api/aimodel'
+import { fetch_skill_list } from '@/api/skill'
 import FileUploadManager from '@/views/file/file-upload-manager.vue'
 
 const props = defineProps<{
@@ -16,6 +17,10 @@ const selectedMode = ref<{ label: string, value: string, icon: string, color: st
 const datasourceList = ref<any[]>([])
 const selectedDatasource = ref<any>(null)
 const showDatasourcePopover = ref(false)
+const showReportQaDatasourcePopover = ref(false)
+const showSkillModal = ref(false)
+const skillList = ref<Array<{ name: string; description: string }>>([])
+const loadingSkills = ref(false)
 
 // LLM 模型列表（下拉选择）
 const llmModels = ref<any[]>([])
@@ -91,8 +96,23 @@ onMounted(async () => {
 
 const handleDatasourceSelect = (ds: any) => {
   selectedDatasource.value = ds
-  selectedMode.value = chips.find((c) => c.value === 'DATABASE_QA')!
-  showDatasourcePopover.value = false
+  // 根据哪个弹窗是打开的来判断应该设置哪个模式
+  if (showReportQaDatasourcePopover.value) {
+    // 从深度问数弹窗中选择，设置为深度问数模式
+    selectedMode.value = chips.find((c) => c.value === 'REPORT_QA')!
+    showReportQaDatasourcePopover.value = false
+  } else if (showDatasourcePopover.value) {
+    // 从数据问答弹窗中选择，设置为数据问答模式
+    selectedMode.value = chips.find((c) => c.value === 'DATABASE_QA')!
+    showDatasourcePopover.value = false
+  } else {
+    // 如果都没有打开，根据当前模式判断
+    if (selectedMode.value?.value === 'REPORT_QA') {
+      selectedMode.value = chips.find((c) => c.value === 'REPORT_QA')!
+    } else {
+      selectedMode.value = chips.find((c) => c.value === 'DATABASE_QA')!
+    }
+  }
 }
 
 
@@ -111,7 +131,7 @@ const canSubmitTableQA = computed(() => {
   if (selectedMode.value?.value !== 'FILEDATA_QA') {
     return true // 非表格问答模式，不限制
   }
-  
+
   // 表格问答模式：必须至少有一个已完成的 Excel 文件
   const finishedFiles = pendingUploadFileInfoList.value.filter(
     (f) => f.status === 'finished' && isValidExcelFile(f)
@@ -123,16 +143,16 @@ const canSubmitTableQA = computed(() => {
 const canSubmit = computed(() => {
   // 基础条件：有文本输入或有文件
   const hasContent = inputValue.value.trim() || pendingUploadFileInfoList.value.length > 0
-  
+
   if (!hasContent) {
     return false
   }
-  
+
   // 表格问答模式特殊检查
   if (selectedMode.value?.value === 'FILEDATA_QA') {
     return canSubmitTableQA.value
   }
-  
+
   return true
 })
 
@@ -170,7 +190,7 @@ const handleEnter = (e?: KeyboardEvent) => {
       window.$ModalMessage.warning('表格问答需要上传Excel文件（.xlsx, .xls, .csv）才能发送')
       return
     }
-    
+
     const invalidFiles = finishedFiles.filter((f) => !isValidExcelFile(f))
     if (invalidFiles.length > 0) {
       window.$ModalMessage.warning('表格问答只支持Excel文件格式(.xlsx, .xls, .csv)')
@@ -189,18 +209,18 @@ const handleEnter = (e?: KeyboardEvent) => {
   // Let's clear them here to reset state for next time if we stay on this page (unlikely)
   inputValue.value = ''
   pendingUploadFileInfoList.value = []
-  // Clear datasource selection if needed, or keep it? 
+  // Clear datasource selection if needed, or keep it?
   // Requirement says "Input box shows selected datasource", so maybe keep it until cleared.
   // But typically submit resets the input area.
   // Let's reset it for now as we are likely navigating away or resetting the view.
-  // selectedDatasource.value = null 
+  // selectedDatasource.value = null
 }
 
 const chips = [
   { icon: 'i-hugeicons:ai-chat-02', label: '智能问答', value: 'COMMON_QA', color: '#7E6BF2', placeholder: '先思考后回答，解决更有难度的问题' },
   { icon: 'i-hugeicons:database-01', label: '数据问答', value: 'DATABASE_QA', color: '#10b981', placeholder: '连接数据源，进行自然语言查询' },
   { icon: 'i-hugeicons:table-01', label: '表格问答', value: 'FILEDATA_QA', color: '#f59e0b', placeholder: '上传表格文件，进行数据分析和图表生成' },
-  { icon: 'i-hugeicons:search-02', label: '深度搜索', value: 'REPORT_QA', color: '#8b5cf6', placeholder: '输入研究主题，生成深度研究报告' },
+  { icon: 'i-hugeicons:search-02', label: '深度问数', value: 'REPORT_QA', color: '#8b5cf6', placeholder: '基于Skill模式，进行深度数据问答与分析' },
 ]
 
 const placeholderText = computed(() => {
@@ -214,10 +234,16 @@ const placeholderText = computed(() => {
 const handleChipClick = (chip: typeof chips[0]) => {
   if (chip.value === 'DATABASE_QA') {
     showDatasourcePopover.value = true
+    showReportQaDatasourcePopover.value = false
+    return
+  }
+  if (chip.value === 'REPORT_QA') {
+    showReportQaDatasourcePopover.value = true
+    showDatasourcePopover.value = false
     return
   }
   selectedMode.value = chip
-  if (chip.value !== 'DATABASE_QA') {
+  if (chip.value !== 'DATABASE_QA' && chip.value !== 'REPORT_QA') {
     selectedDatasource.value = null
   }
 }
@@ -229,6 +255,47 @@ const clearMode = () => {
   }
   selectedMode.value = null
   selectedDatasource.value = null
+  // 关闭所有数据源弹窗
+  showDatasourcePopover.value = false
+  showReportQaDatasourcePopover.value = false
+}
+
+const loadSkills = async () => {
+  if (loadingSkills.value) return
+  loadingSkills.value = true
+  try {
+    const res = await fetch_skill_list()
+    const data = await res.json()
+
+    if (res.ok && data.code === 200) {
+      // 装饰器已经包装了响应，data.data 就是技能数组
+      if (Array.isArray(data.data)) {
+        skillList.value = data.data
+      } else {
+        skillList.value = []
+      }
+    } else {
+      window.$ModalMessage?.error?.(data.msg || '加载技能列表失败')
+      skillList.value = []
+    }
+  } catch (e) {
+    window.$ModalMessage?.error?.('加载技能列表失败')
+    skillList.value = []
+  } finally {
+    loadingSkills.value = false
+  }
+}
+
+const handleSkillDotClick = () => {
+  if (!showSkillModal.value) {
+    // 打开弹框时加载数据
+    if (skillList.value.length === 0) {
+      loadSkills()
+    }
+    showSkillModal.value = true
+  } else {
+    showSkillModal.value = false
+  }
 }
 
 const bottomIcons = [
@@ -315,7 +382,7 @@ const bottomIcons = [
           v-model="pendingUploadFileInfoList"
           class="w-full"
         />
-        
+
         <!-- 表格问答模式提示：需要上传Excel文件 -->
         <div
           v-if="selectedMode?.value === 'FILEDATA_QA' && !canSubmitTableQA"
@@ -340,33 +407,96 @@ const bottomIcons = [
         <!-- Bottom: Footer Actions -->
         <div class="input-footer flex justify-between items-center mt-3">
           <!-- Left: Mode Pill or Chips -->
-          <div class="left-actions flex items-center">
+          <div class="left-actions flex items-center gap-2">
             <!-- If mode is selected, show it as a pill -->
-            <div
-              v-if="selectedMode"
-              class="mode-pill"
-              :style="{
-                color: selectedMode.color,
-                borderColor: `${selectedMode.color}30`,
-                backgroundColor: `${selectedMode.color}10`,
-              }"
-            >
+            <template v-if="selectedMode">
               <div
-                :class="selectedMode.icon"
-                class="text-16"
-              ></div>
-              <span class="font-medium">{{ selectedMode.label }}</span>
-              <span
-                v-if="selectedMode.value === 'DATABASE_QA' && selectedDatasource"
-                class="font-medium ml-1"
+                class="mode-pill"
+                :style="{
+                  color: selectedMode.color,
+                  borderColor: `${selectedMode.color}30`,
+                  backgroundColor: `${selectedMode.color}10`,
+                }"
               >
-                | {{ selectedDatasource.name }}
-              </span>
-              <div
-                class="i-hugeicons:cancel-01 text-14 ml-1 cursor-pointer opacity-60 hover:opacity-100"
-                @click.stop="clearMode"
-              ></div>
-            </div>
+                <div
+                  :class="selectedMode.icon"
+                  class="text-16"
+                ></div>
+                <span class="font-medium">{{ selectedMode.label }}</span>
+                <span
+                  v-if="(selectedMode.value === 'DATABASE_QA' || selectedMode.value === 'REPORT_QA') && selectedDatasource"
+                  class="font-medium ml-1"
+                >
+                  | {{ selectedDatasource.name }}
+                </span>
+                <div
+                  class="i-hugeicons:cancel-01 text-14 ml-1 cursor-pointer opacity-60 hover:opacity-100"
+                  @click.stop="clearMode"
+                ></div>
+              </div>
+              <!-- 深度问数模式显示技能小点 - 独立显示在右侧 -->
+              <n-popover
+                v-if="selectedMode.value === 'REPORT_QA'"
+                trigger="manual"
+                v-model:show="showSkillModal"
+                placement="bottom-start"
+                :show-arrow="true"
+                style="padding: 0; max-width: 320px;"
+                @clickoutside="showSkillModal = false"
+              >
+                <template #trigger>
+                  <div
+                    class="skill-dot-wrapper"
+                    :style="{ color: selectedMode.color }"
+                    @click.stop="handleSkillDotClick"
+                  >
+                    <div class="skill-dot"></div>
+                  </div>
+                </template>
+                <div class="skill-popover-content">
+                  <div class="skill-popover-header">
+                    <div class="skill-popover-title">
+                      <div class="i-hugeicons:magic-wand-01 text-18 mr-2" style="color: #8b5cf6;"></div>
+                      <span class="font-semibold">可用技能</span>
+                    </div>
+                  </div>
+                  <div class="skill-list-container">
+                    <div
+                      v-if="loadingSkills"
+                      class="flex items-center justify-center py-8"
+                    >
+                      <n-spin size="small" />
+                      <span class="ml-2 text-gray-500">加载中...</span>
+                    </div>
+                    <div
+                      v-else-if="skillList.length === 0"
+                      class="flex flex-col items-center justify-center py-8 text-gray-400"
+                    >
+                      <div class="i-hugeicons:search-02 text-24 opacity-20 mb-2"></div>
+                      <span class="text-13">暂无可用技能</span>
+                    </div>
+                    <div
+                      v-else
+                      class="skill-list"
+                    >
+                      <div
+                        v-for="skill in skillList"
+                        :key="skill.name"
+                        class="skill-item"
+                      >
+                        <div class="skill-item-header">
+                          <div class="skill-icon i-hugeicons:magic-wand-01 text-16"></div>
+                          <span class="skill-name">{{ skill.name }}</span>
+                        </div>
+                        <div class="skill-description">
+                          {{ skill.description || '暂无描述' }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </n-popover>
+            </template>
 
             <!-- If NO mode selected, show chips row inside -->
             <div
@@ -374,6 +504,7 @@ const bottomIcons = [
               class="flex items-center gap-2"
             >
               <template v-for="chip in chips" :key="chip.label">
+                <!-- 数据问答弹窗 -->
                 <n-popover
                   v-if="chip.value === 'DATABASE_QA'"
                   trigger="click"
@@ -382,6 +513,7 @@ const bottomIcons = [
                   :show-arrow="false"
                   class="!p-0"
                   style="padding: 0;"
+                  @clickoutside="showDatasourcePopover = false"
                 >
                   <template #trigger>
                     <div
@@ -405,7 +537,7 @@ const bottomIcons = [
                         :class="{ 'bg-[#F5F3FF] border-[#DDD6FE]': selectedDatasource?.id === ds.id }"
                         @click="handleDatasourceSelect(ds)"
                       >
-                        <div 
+                        <div
                           class="flex-shrink-0 w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center group-hover:bg-white transition-colors"
                           :class="{ 'bg-white': selectedDatasource?.id === ds.id }"
                         >
@@ -426,6 +558,63 @@ const bottomIcons = [
                     </div>
                   </div>
                 </n-popover>
+
+                <!-- 深度问数弹窗 -->
+                <n-popover
+                  v-else-if="chip.value === 'REPORT_QA'"
+                  trigger="click"
+                  v-model:show="showReportQaDatasourcePopover"
+                  placement="bottom"
+                  :show-arrow="false"
+                  class="!p-0"
+                  style="padding: 0;"
+                  @clickoutside="showReportQaDatasourcePopover = false"
+                >
+                  <template #trigger>
+                    <div
+                      class="inner-chip"
+                      @click="handleChipClick(chip)"
+                    >
+                      <div
+                        :class="chip.icon"
+                        class="text-14"
+                        :style="{ color: chip.color }"
+                      ></div>
+                      <span>{{ chip.label }}</span>
+                    </div>
+                  </template>
+                  <div class="flex flex-col min-w-[200px] max-w-[280px] bg-white rounded-xl shadow-2xl border border-gray-100 p-3">
+                    <div class="max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
+                      <div
+                        v-for="ds in datasourceList"
+                        :key="ds.id"
+                        class="group flex items-center gap-2.5 px-3 py-2.5 mb-1.5 last:mb-0 hover:bg-[#F5F3FF] cursor-pointer rounded-lg transition-all duration-200 border border-transparent hover:border-[#DDD6FE]"
+                        :class="{ 'bg-[#F5F3FF] border-[#DDD6FE]': selectedDatasource?.id === ds.id }"
+                        @click="handleDatasourceSelect(ds)"
+                      >
+                        <div
+                          class="flex-shrink-0 w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center group-hover:bg-white transition-colors"
+                          :class="{ 'bg-white': selectedDatasource?.id === ds.id }"
+                        >
+                          <div class="i-hugeicons:database-01 text-15 text-gray-400 group-hover:text-[#7E6BF2]" :class="{ 'text-[#7E6BF2]': selectedDatasource?.id === ds.id }"></div>
+                        </div>
+                        <span class="text-14 text-gray-700 font-medium group-hover:text-[#7E6BF2] truncate flex-1 min-w-0" :class="{ 'text-[#7E6BF2]': selectedDatasource?.id === ds.id }" :title="`${ds.name}-${ds.type || 'Datasource'}`">
+                          {{ ds.name }}-{{ ds.type || 'Datasource' }}
+                        </span>
+                        <div v-if="selectedDatasource?.id === ds.id" class="flex-shrink-0">
+                          <div class="i-hugeicons:tick-02 text-15 text-[#7E6BF2]"></div>
+                        </div>
+                      </div>
+
+                      <div v-if="!datasourceList.length" class="flex flex-col items-center justify-center py-10 text-gray-400 gap-2">
+                        <div class="i-hugeicons:database-01 text-24 opacity-20"></div>
+                        <span class="text-13">暂无可用数据源</span>
+                      </div>
+                    </div>
+                  </div>
+                </n-popover>
+
+                <!-- 其他选项（智能问答、表格问答） -->
                 <div
                   v-else
                   class="inner-chip"
@@ -467,6 +656,7 @@ const bottomIcons = [
 
       <!-- Removed External Chips Row -->
     </div>
+
   </div>
 </template>
 
@@ -539,7 +729,7 @@ $shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
 .model-select-top-left {
   position: absolute;
   top: 16px;
-  left: 24px;
+  left: 16px;
   z-index: 10;
 }
 
@@ -890,5 +1080,139 @@ $shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
       background: darken($border-color, 10%);
     }
   }
+}
+
+// ============================================
+// 技能相关样式
+// ============================================
+.skill-dot-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border-radius: 50%;
+  background-color: transparent;
+
+  &:hover {
+    background-color: rgba(139, 92, 246, 0.1);
+    transform: scale(1.1);
+  }
+}
+
+.skill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: currentColor;
+  display: block;
+  transition: all 0.2s ease;
+  box-shadow: 0 0 4px currentColor;
+}
+
+.skill-popover-content {
+  background: white;
+  border-radius: $radius-lg;
+  overflow: hidden;
+  box-shadow: $shadow-xl;
+  width: 100%;
+  max-width: 320px;
+}
+
+.skill-popover-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid $border-color;
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(139, 92, 246, 0.02) 100%);
+  flex-shrink: 0;
+}
+
+.skill-popover-title {
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  color: $text-primary;
+  font-family: $font-family-base;
+}
+
+.skill-list-container {
+  max-height: 360px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 10px 12px;
+  background: white;
+  -webkit-overflow-scrolling: touch;
+
+  &::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: $border-color;
+    border-radius: 3px;
+
+    &:hover {
+      background: darken($border-color, 10%);
+    }
+  }
+}
+
+.skill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skill-item {
+  padding: 12px 14px;
+  border-radius: $radius-md;
+  border: 1px solid $border-color;
+  background-color: $bg-subtle;
+  transition: all 0.2s ease;
+  cursor: default;
+  flex-shrink: 0;
+
+  &:hover {
+    border-color: rgba(139, 92, 246, 0.3);
+    background-color: rgba(139, 92, 246, 0.05);
+    transform: translateY(-1px);
+    box-shadow: $shadow-sm;
+  }
+}
+
+.skill-item-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.skill-icon {
+  color: $info-color;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+.skill-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: $text-primary;
+  font-family: $font-family-base;
+  text-transform: capitalize;
+  word-break: break-word;
+}
+
+.skill-description {
+  font-size: 12px;
+  color: $text-secondary;
+  line-height: 1.5;
+  margin-left: 22px;
+  font-family: $font-family-base;
+  word-break: break-word;
 }
 </style>

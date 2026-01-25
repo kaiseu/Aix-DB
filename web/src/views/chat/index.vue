@@ -118,7 +118,7 @@ function newChat() {
 
   // 重置查看历史消息标识
   isView.value = false
-  
+
   // 重置内容加载状态
   contentLoadingStates.value = []
   currentRenderIndex.value = 0
@@ -126,19 +126,19 @@ function newChat() {
   // 重置对话类型为默认值（智能问答）
   qa_type.value = 'COMMON_QA'
   businessStore.update_qa_type('COMMON_QA')
-  
+
   // 清空选中的数据源
   selectedDatasource.value = null
-  
+
   // 清空文件列表
   businessStore.clear_file_list()
-  
+
   // 清空 writerList，避免显示旧对话类型的数据
   businessStore.clearWriterList()
-  
+
   // 清空记录ID
   businessStore.clear_record_id()
-  
+
   // 重置所有问答类型的uuid
   uuids.value = {}
   uuids.value['COMMON_QA'] = uuidv4()
@@ -249,6 +249,8 @@ const onFailedReader = (index: number) => {
   if (conversationItems.value[index]) {
     conversationItems.value[index].reader = null
     stylizingLoading.value = false
+    // 取消推荐问题按钮和重新对话按钮的禁用状态（请求失败时）
+    businessStore.set_suggested_disabled(false)
     if (refReaderMarkdownPreview.value) {
       refReaderMarkdownPreview.value.initializeEnd()
     }
@@ -264,6 +266,8 @@ const onFailedReader = (index: number) => {
 const onCompletedReader = (index: number) => {
   if (conversationItems.value[index]) {
     stylizingLoading.value = false
+    // 取消推荐问题按钮和重新对话按钮的禁用状态
+    businessStore.set_suggested_disabled(false)
     // 隐藏加载动画（找到对应的 visibleIndex）
     const item = conversationItems.value[index]
     const visibleIndex = visibleConversationItems.value.findIndex(vi => vi.uuid === item.uuid)
@@ -297,6 +301,8 @@ const onChartReady = (index) => {
   if (index < conversationItems.value.length) {
     currentRenderIndex.value = index
     stylizingLoading.value = false
+    // 取消推荐问题按钮和重新对话按钮的禁用状态（数据问答图表渲染完成后）
+    businessStore.set_suggested_disabled(false)
   }
 }
 
@@ -451,10 +457,10 @@ const getStepProgressForIndex = (visibleIndex: number) => {
   // 获取 visibleConversationItems 中对应索引的 item
   const item = visibleConversationItems.value[visibleIndex]
   if (!item) return undefined
-  
+
   // 找到该 item 在 conversationItems 中的原始索引
   const originalIndex = conversationItems.value.findIndex(ci => ci.uuid === item.uuid)
-  
+
   if (originalIndex >= 0) {
     return stepProgressStates.value[originalIndex]
   }
@@ -468,12 +474,12 @@ const onStepProgress = (visibleIndex: number, progress: any) => {
   if (!item) {
     return
   }
-  
+
   const originalIndex = conversationItems.value.findIndex(ci => ci.uuid === item.uuid)
   if (originalIndex < 0) {
     return
   }
-  
+
   if (progress && progress.type === 'step_progress' && progress.stepName && progress.progressId) {
     // 只有当状态为 start 时才显示/替换步骤信息
     // complete 状态不做任何操作，等待下一个步骤的 start 来替换
@@ -493,7 +499,7 @@ const onStepProgress = (visibleIndex: number, progress: any) => {
           assistantVisibleIndexes.push(i)
         }
       }
-      
+
       // 为所有相关的 visibleIndex 设置 contentLoadingStates
       assistantVisibleIndexes.forEach(vi => {
         while (contentLoadingStates.value.length <= vi) {
@@ -505,7 +511,7 @@ const onStepProgress = (visibleIndex: number, progress: any) => {
         // 确保 progressDisplayStates 为 false（显式设置，即使之前是 undefined）
         progressDisplayStates.value[vi] = false
       })
-      
+
       // 使用原始索引存储步骤状态（直接替换之前的步骤信息）
       stepProgressStates.value = {
         ...stepProgressStates.value,
@@ -515,7 +521,7 @@ const onStepProgress = (visibleIndex: number, progress: any) => {
           progressId: progress.progressId,
         }
       }
-      
+
       // 使用 nextTick 确保 DOM 更新
       nextTick(() => {
         scrollToBottom()
@@ -539,7 +545,7 @@ const checkAllFilesUploaded = () => {
     return false
   }
   if (qa_type.value === 'REPORT_QA' && pendingFiles.length > 0) {
-    window.$ModalMessage.warning('深度搜索暂不支持文件上传')
+    window.$ModalMessage.warning('深度问数暂不支持文件上传')
     return false
   }
 
@@ -650,10 +656,10 @@ const handleCreateStylized = async (
 
     // 清空文件上传列表
     pendingUploadFileInfoList.value = []
-    
+
     // 清空 writerList，确保不会显示旧对话类型的数据
     businessStore.clearWriterList()
-    
+
     // businessStore.clear_file_list()
   }
 
@@ -687,7 +693,7 @@ const handleCreateStylized = async (
   // 存储该轮用户对话消息
   if (textContent) {
     const newChatId = uuids.value[currentQaType]
-    
+
     // 如果之前是在查看历史对话，检查新数据的 chat_id 是否与历史对话的 chat_id 匹配
     // 如果不匹配，说明是新对话，应该清除历史对话的分页状态
     if (currentConversationChatId.value && newChatId !== currentConversationChatId.value) {
@@ -696,7 +702,7 @@ const handleCreateStylized = async (
       conversationHistoryTotalPages.value = 1
       conversationHistoryCurrentLoadedPage.value = 1
     }
-    
+
     conversationItems.value.push({
       uuid: uuid_str,
       chat_id: newChatId,
@@ -749,16 +755,16 @@ const handleCreateStylized = async (
   if (permissionDenied) {
     // 显示权限错误消息提醒
     message.warning(errorMessage || '您没有访问该数据源的权限，请联系管理员授权。')
-    
+
     // 重置对话状态
     stylizingLoading.value = false
     onCompletedReader(conversationItems.value.length - 1)
-    
+
     // 移除最后添加的用户消息（因为权限检查失败，不应该保留这次对话）
     if (conversationItems.value.length > 0 && conversationItems.value[conversationItems.value.length - 1].role === 'user') {
       conversationItems.value.pop()
     }
-    
+
     // 清空文件上传列表
     pendingUploadFileInfoList.value = []
     businessStore.clear_file_list()
@@ -800,7 +806,7 @@ const handleCreateStylized = async (
       // 找到新添加的 assistant 消息在 visibleConversationItems 中的索引
       // 必须同时匹配 uuid 和 role === 'assistant'，因为用户消息和 assistant 消息可能有相同的 uuid
       const visibleIndex = visibleConversationItems.value.findIndex(vi => vi.uuid === uuid_str && vi.role === 'assistant')
-      
+
       if (visibleIndex >= 0) {
         // 确保数组长度足够
         while (contentLoadingStates.value.length <= visibleIndex) {
@@ -1035,7 +1041,7 @@ const onSuggested = (index: number) => {
   if (qa_type.value === 'REPORT_QA') {
     onAqtiveChange('COMMON_QA', '')
   }
-  
+
   // 获取当前对话的file_key（从最后一个用户消息中获取）
   let currentFileKey: { source_file_key: string; parse_file_key: string; file_size: string }[] = []
   if (conversationItems.value.length > 0) {
@@ -1048,12 +1054,12 @@ const onSuggested = (index: number) => {
       }
     }
   }
-  
+
   // 如果当前问答类型是表格问答，且没有找到file_key，尝试从businessStore获取
   if (qa_type.value === 'FILEDATA_QA' && currentFileKey.length === 0 && businessStore.file_list.length > 0) {
     currentFileKey = businessStore.file_list
   }
-  
+
   handleCreateStylized(suggested_array.value[index], currentFileKey)
 }
 
@@ -1205,6 +1211,7 @@ const scrollThreshold = 1000 // 滚动超过100px时显示按钮
 const datasourceList = ref<any[]>([])
 const selectedDatasource = ref<any>(null)
 const showDatasourcePopover = ref(false)
+const showReportQaDatasourcePopover = ref(false)
 
 // 用户点击图标滚动到底部
 const clickScrollToBottom = () => {
@@ -1249,7 +1256,7 @@ onMounted(async () => {
   catch (e) {
     console.error(e)
   }
-  
+
 })
 
 // 在组件卸载前移除事件监听
@@ -1279,28 +1286,28 @@ const pendingUploadFileInfoList = ref([])
 const handleSubmitFromDefaultPage = (payload: { text: string, mode: string, datasource_id?: number }) => {
   // 先清空之前的对话数据，确保切换类型时不会显示旧数据
   conversationItems.value = []
-  
+
   // 清空 writerList，避免显示旧对话类型的数据
   businessStore.clearWriterList()
-  
+
   // 清空记录ID
   businessStore.clear_record_id()
-  
+
   // 切换对话类型
   onAqtiveChange(payload.mode, '') // Switch mode
   inputTextString.value = payload.text // Set text
 
   // 从默认页开始新对话，更新Key
   chatTransitionKey.value = `new-chat-${Date.now()}`
-  
+
   if (payload.datasource_id) {
      const ds = datasourceList.value.find((d) => d.id === payload.datasource_id)
      if (ds) {
          selectedDatasource.value = ds
      }
   } else {
-    // 如果不是数据问答，清空选中的数据源
-    if (payload.mode !== 'DATABASE_QA') {
+    // 如果不是数据问答或深度问数，清空选中的数据源
+    if (payload.mode !== 'DATABASE_QA' && payload.mode !== 'REPORT_QA') {
       selectedDatasource.value = null
     }
   }
@@ -1315,7 +1322,7 @@ const qaOptions = [
   { icon: 'i-hugeicons:ai-chat-02', label: '智能问答', value: 'COMMON_QA', color: '#7E6BF2' },
   { icon: 'i-hugeicons:database-01', label: '数据问答', value: 'DATABASE_QA', color: '#10b981' },
   { icon: 'i-hugeicons:table-01', label: '表格问答', value: 'FILEDATA_QA', color: '#f59e0b' },
-  { icon: 'i-hugeicons:search-02', label: '深度搜索', value: 'REPORT_QA', color: '#8b5cf6' },
+  { icon: 'i-hugeicons:search-02', label: '深度问数', value: 'REPORT_QA', color: '#8b5cf6' },
 ]
 
 const currentQaOption = computed(() => {
@@ -1329,17 +1336,38 @@ const clearMode = () => {
   // newChat() 已经会重置 qa_type 和 selectedDatasource，所以这里只需要调用它
   newChat()
   showModeSelector.value = false
+  // 关闭所有数据源弹窗
+  showDatasourcePopover.value = false
+  showReportQaDatasourcePopover.value = false
 }
 
 const selectMode = (mode: string) => {
   onAqtiveChange(mode, '')
   showModeSelector.value = false
+  // 关闭所有数据源弹窗
+  showDatasourcePopover.value = false
+  showReportQaDatasourcePopover.value = false
 }
 
 const handleDatasourceSelect = (ds: any) => {
   selectedDatasource.value = ds
-  selectMode('DATABASE_QA')
-  showDatasourcePopover.value = false
+  // 根据哪个弹窗是打开的来判断应该设置哪个模式
+  if (showReportQaDatasourcePopover.value) {
+    // 从深度问数弹窗中选择，设置为深度问数模式
+    selectMode('REPORT_QA')
+    showReportQaDatasourcePopover.value = false
+  } else if (showDatasourcePopover.value) {
+    // 从数据问答弹窗中选择，设置为数据问答模式
+    selectMode('DATABASE_QA')
+    showDatasourcePopover.value = false
+  } else {
+    // 如果都没有打开，根据当前模式判断
+    if (qa_type.value === 'REPORT_QA') {
+      selectMode('REPORT_QA')
+    } else {
+      selectMode('DATABASE_QA')
+    }
+  }
 }
 
 // Navigation Rail Items - REMOVED
@@ -1472,31 +1500,31 @@ const handleConversationScroll = () => {
   if (!messagesContainer.value || !currentConversationChatId.value) {
     return
   }
-  
+
   // 如果正在加载，直接返回，但允许检查滚动位置以提前显示加载状态
   if (isLoadingMoreConversationHistory.value || isLoadingConversationHistory.value) {
     return
   }
-  
+
   const el = messagesContainer.value
   const scrollTop = el.scrollTop
   const scrollHeight = el.scrollHeight
   const clientHeight = el.clientHeight
-  
+
   // 使用更严格的触发条件，避免在边界附近频繁触发
   const isNearTop = scrollTop <= 100 // 滚动到顶部附近时加载更旧的消息（阈值增大）
   const isNearBottom = scrollTop + clientHeight >= scrollHeight - 50 // 滚动到底部附近时加载更新的消息（阈值增大）
-  
+
   // 防抖处理：清除之前的定时器
   if (scrollTimer) {
     clearTimeout(scrollTimer)
   }
-  
+
   scrollTimer = setTimeout(() => {
     if (!messagesContainer.value || !currentConversationChatId.value) {
       return
     }
-    
+
     // 检查当前对话的 chat_id 是否与 currentConversationChatId 匹配
     // 如果 conversationItems 中有数据，检查最新的 chat_id 是否匹配
     // 如果不匹配，说明是新对话，不应该触发历史对话的分页加载
@@ -1509,12 +1537,12 @@ const handleConversationScroll = () => {
         return
       }
     }
-    
+
     const currentItem = tableData.value.find(item => item.chat_id === currentConversationChatId.value)
     if (!currentItem) {
       return
     }
-    
+
     // 如果还有更旧的页面，加载更旧的页面
     // 检查：最小已加载页码大于1，且不在加载中
     if (isNearTop && conversationHistoryMinLoadedPage.value > 1) {
@@ -1524,7 +1552,7 @@ const handleConversationScroll = () => {
     else if (isNearBottom && hasMoreConversationHistory.value) {
       loadConversationHistory(currentItem, false, false) // loadOlder=false，加载更新的页面（向后追加）
     }
-    
+
     scrollTimer = null
   }, 100) // 100ms 防抖延迟，减少延迟提升响应速度
 }
@@ -1558,20 +1586,59 @@ const handleHistoryClick = async (item: any) => {
     messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
   }
 
+  // 先设置对话类型
   onAqtiveChange(item.qa_type, item.chat_id)
 
-  // 恢复选中的数据源
-  if (item.qa_type === 'DATABASE_QA') {
+  // 确保模式选择器关闭，显示模式标签（这样数据源才能显示）
+  showModeSelector.value = false
+
+  // 恢复选中的数据源（和数据问答显示逻辑一样）
+  // 等待 DOM 更新后再设置数据源，确保响应式更新
+  await nextTick()
+
+  if (item.qa_type === 'DATABASE_QA' || item.qa_type === 'REPORT_QA') {
     if (item.datasource_id) {
+       // 先尝试从数据源列表中找到
        const ds = datasourceList.value.find((d) => d.id === item.datasource_id)
        if (ds) {
            selectedDatasource.value = ds
        } else if (item.datasource_name) {
-           selectedDatasource.value = { id: item.datasource_id, name: item.datasource_name }
+           // 如果数据源列表中找不到，使用历史记录中的名称创建临时对象
+           // 确保对象有 name 属性，用于显示
+           selectedDatasource.value = {
+             id: item.datasource_id,
+             name: item.datasource_name,
+             type: item.datasource_type || 'Datasource'
+           }
+       } else {
+           // 如果既找不到数据源，也没有名称，尝试使用数据源ID创建临时对象
+           selectedDatasource.value = {
+             id: item.datasource_id,
+             name: `数据源 ${item.datasource_id}`,
+             type: 'Datasource'
+           }
        }
+    } else {
+      // 如果没有数据源ID，清空选中的数据源
+      selectedDatasource.value = null
     }
   } else {
     selectedDatasource.value = null
+  }
+
+  // 再次等待 DOM 更新，确保数据源显示
+  await nextTick()
+
+  // 调试日志（开发环境）
+  if (import.meta.env.DEV) {
+    console.log('恢复数据源:', {
+      qa_type: item.qa_type,
+      datasource_id: item.datasource_id,
+      datasource_name: item.datasource_name,
+      selectedDatasource: selectedDatasource.value,
+      currentQaOption: currentQaOption.value,
+      showModeSelector: showModeSelector.value
+    })
   }
 }
 </script>
@@ -1660,7 +1727,7 @@ const handleHistoryClick = async (item: any) => {
           <!-- History List -->
           <div
             ref="historyScrollRef"
-            class="flex-1 custom-scrollbar history-list-scrollbar px-4"
+            class="flex-1 custom-scrollbar history-list-scrollbar px-4 bg-[#fcfcfc]"
             :class="shouldForceScrollbar ? 'overflow-y-scroll' : 'overflow-y-auto'"
             @scroll.passive="handleHistoryScroll"
           >
@@ -1680,14 +1747,14 @@ const handleHistoryClick = async (item: any) => {
                 @click="handleHistoryClick(item)"
               >
                 <div class="flex items-center gap-2 overflow-hidden w-full">
-                  <div class="truncate text-[14px] w-full leading-relaxed ml-10 mt-10 history-item-text">
+                  <div class="truncate text-[14px] w-full leading-[1.45] ml-10 mt-10 history-item-text">
                     {{ item.key || '无标题对话' }}
                   </div>
                 </div>
                 <!-- Attachment Icon Placeholder -->
                 <div
                   v-if="index % 4 === 0"
-                  class="i-hugeicons:attachment-01 text-14 text-[#9ca3af] shrink-0 ml-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                  class="i-hugeicons:attachment-01 text-[14px] text-[#9ca3af] shrink-0 ml-2 opacity-0 group-hover:opacity-100 transition-opacity"
                 ></div>
               </div>
             </TransitionGroup>
@@ -2025,6 +2092,72 @@ const handleHistoryClick = async (item: any) => {
                 @suggested="onSuggested"
               />
             </div>
+
+            <!-- 底部等待动画（智能问答和深度问数） -->
+            <transition name="fade">
+              <div
+                v-if="stylizingLoading && (qa_type === 'COMMON_QA' || qa_type === 'REPORT_QA') && !isView"
+                class="flex items-center justify-start pt-2 pb-2 bottom-loading-indicator max-w-[890px] w-full mx-auto"
+                style="padding-left: 15px;"
+              >
+                <div class="flex items-center gap-2">
+                  <div class="star-spinner" :style="{ width: '24px', height: '24px' }">
+                    <svg
+                      width="24"
+                      height="24"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <!-- 中心星星 -->
+                      <g class="star-group star-center">
+                        <path
+                          d="M12 2L14.09 8.26L20 9.27L15 13.14L16.18 19.02L12 15.77L7.82 19.02L9 13.14L4 9.27L9.91 8.26L12 2Z"
+                          fill="#b1adf3"
+                          class="star-path"
+                        />
+                      </g>
+                      <!-- 围绕中心旋转的星星1 (上方) -->
+                      <g class="star-group star-1" transform="translate(12, 12)">
+                        <path
+                          d="M12 2L14.09 8.26L20 9.27L15 13.14L16.18 19.02L12 15.77L7.82 19.02L9 13.14L4 9.27L9.91 8.26L12 2Z"
+                          fill="#b1adf3"
+                          class="star-path"
+                          transform="scale(0.5) translate(0, -16)"
+                        />
+                      </g>
+                      <!-- 围绕中心旋转的星星2 (右侧) -->
+                      <g class="star-group star-2" transform="translate(12, 12)">
+                        <path
+                          d="M12 2L14.09 8.26L20 9.27L15 13.14L16.18 19.02L12 15.77L7.82 19.02L9 13.14L4 9.27L9.91 8.26L12 2Z"
+                          fill="#b1adf3"
+                          class="star-path"
+                          transform="scale(0.5) translate(16, 0)"
+                        />
+                      </g>
+                      <!-- 围绕中心旋转的星星3 (下方) -->
+                      <g class="star-group star-3" transform="translate(12, 12)">
+                        <path
+                          d="M12 2L14.09 8.26L20 9.27L15 13.14L16.18 19.02L12 15.77L7.82 19.02L9 13.14L4 9.27L9.91 8.26L12 2Z"
+                          fill="#b1adf3"
+                          class="star-path"
+                          transform="scale(0.5) translate(0, 16)"
+                        />
+                      </g>
+                      <!-- 围绕中心旋转的星星4 (左侧) -->
+                      <g class="star-group star-4" transform="translate(12, 12)">
+                        <path
+                          d="M12 2L14.09 8.26L20 9.27L15 13.14L16.18 19.02L12 15.77L7.82 19.02L9 13.14L4 9.27L9.91 8.26L12 2Z"
+                          fill="#b1adf3"
+                          class="star-path"
+                          transform="scale(0.5) translate(-16, 0)"
+                        />
+                      </g>
+                    </svg>
+                  </div>
+                  <span class="text-[#999] text-[13px]">正在思考中...</span>
+                </div>
+              </div>
+            </transition>
               </div>
             </transition>
           </div>
@@ -2068,7 +2201,7 @@ const handleHistoryClick = async (item: any) => {
                 <!-- Left: Mode Pill (Deep Thinking) -->
                 <div class="left-actions">
                   <div
-                    v-if="!showModeSelector && currentQaOption"
+                    v-if="currentQaOption && !showModeSelector"
                     class="mode-pill"
                     :style="{
                       color: currentQaOption.color,
@@ -2082,7 +2215,7 @@ const handleHistoryClick = async (item: any) => {
                     ></div>
                     <span class="font-medium">{{ currentQaOption.label }}</span>
                     <span
-                      v-if="currentQaOption.value === 'DATABASE_QA' && selectedDatasource"
+                      v-if="(currentQaOption.value === 'DATABASE_QA' || currentQaOption.value === 'REPORT_QA') && selectedDatasource"
                       class="font-medium ml-1"
                     >
                       | {{ selectedDatasource.name }}
@@ -2093,13 +2226,14 @@ const handleHistoryClick = async (item: any) => {
                     ></div>
                   </div>
                   <div
-                    v-else
+                    v-else-if="showModeSelector || !currentQaOption"
                     class="flex items-center gap-2"
                   >
                     <template
                       v-for="opt in qaOptions"
                       :key="opt.value"
                     >
+                        <!-- 数据问答弹窗 -->
                         <n-popover
                           v-if="opt.value === 'DATABASE_QA'"
                           trigger="manual"
@@ -2118,7 +2252,7 @@ const handleHistoryClick = async (item: any) => {
                                 '--active-color': opt.color,
                                 '--active-bg': `${opt.color}15`,
                               }"
-                              @click.stop="showDatasourcePopover = true"
+                              @click.stop="showDatasourcePopover = true; showReportQaDatasourcePopover = false"
                             >
                               <div
                                 :class="opt.icon"
@@ -2126,7 +2260,7 @@ const handleHistoryClick = async (item: any) => {
                                 :style="{ color: opt.color }"
                               ></div>
                               <span class="mode-icon-label">{{ opt.label }}</span>
-                              <div v-if="opt.value === 'DATABASE_QA'" class="i-hugeicons:arrow-down-01 text-12 text-gray-400 ml-1"></div>
+                              <div class="i-hugeicons:arrow-down-01 text-12 text-gray-400 ml-1"></div>
                             </div>
                           </template>
                           <div class="flex flex-col min-w-[200px] max-w-[280px] bg-white rounded-xl shadow-2xl border border-gray-100 p-3">
@@ -2138,7 +2272,68 @@ const handleHistoryClick = async (item: any) => {
                                 :class="{ 'bg-[#F5F3FF] border-[#DDD6FE]': selectedDatasource?.id === ds.id }"
                                 @click="handleDatasourceSelect(ds)"
                               >
-                                <div 
+                                <div
+                                  class="flex-shrink-0 w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center group-hover:bg-white transition-colors"
+                                  :class="{ 'bg-white': selectedDatasource?.id === ds.id }"
+                                >
+                                  <div class="i-hugeicons:database-01 text-15 text-gray-400 group-hover:text-[#7E6BF2]" :class="{ 'text-[#7E6BF2]': selectedDatasource?.id === ds.id }"></div>
+                                </div>
+                                <span class="text-14 text-gray-700 font-medium group-hover:text-[#7E6BF2] truncate flex-1 min-w-0" :class="{ 'text-[#7E6BF2]': selectedDatasource?.id === ds.id }" :title="`${ds.name}-${ds.type || 'Datasource'}`">
+                                  {{ ds.name }}-{{ ds.type || 'Datasource' }}
+                                </span>
+                                <div v-if="selectedDatasource?.id === ds.id" class="flex-shrink-0">
+                                  <div class="i-hugeicons:tick-02 text-15 text-[#7E6BF2]"></div>
+                                </div>
+                              </div>
+
+                              <div v-if="!datasourceList.length" class="flex flex-col items-center justify-center py-10 text-gray-400 gap-2">
+                                <div class="i-hugeicons:database-01 text-24 opacity-20"></div>
+                                <span class="text-13">暂无可用数据源</span>
+                              </div>
+                            </div>
+                          </div>
+                        </n-popover>
+
+                        <!-- 深度问数弹窗 -->
+                        <n-popover
+                          v-if="opt.value === 'REPORT_QA'"
+                          trigger="manual"
+                          v-model:show="showReportQaDatasourcePopover"
+                          placement="top"
+                          :show-arrow="false"
+                          class="!p-0"
+                          style="padding: 0;"
+                          @clickoutside="showReportQaDatasourcePopover = false"
+                        >
+                          <template #trigger>
+                            <div
+                              class="mode-icon-btn"
+                              :class="{ active: qa_type === opt.value || showReportQaDatasourcePopover }"
+                              :style="{
+                                '--active-color': opt.color,
+                                '--active-bg': `${opt.color}15`,
+                              }"
+                              @click.stop="showReportQaDatasourcePopover = true; showDatasourcePopover = false"
+                            >
+                              <div
+                                :class="opt.icon"
+                                class="text-14"
+                                :style="{ color: opt.color }"
+                              ></div>
+                              <span class="mode-icon-label">{{ opt.label }}</span>
+                              <div class="i-hugeicons:arrow-down-01 text-12 text-gray-400 ml-1"></div>
+                            </div>
+                          </template>
+                          <div class="flex flex-col min-w-[200px] max-w-[280px] bg-white rounded-xl shadow-2xl border border-gray-100 p-3">
+                            <div class="max-h-[360px] overflow-y-auto custom-scrollbar pr-1">
+                              <div
+                                v-for="ds in datasourceList"
+                                :key="ds.id"
+                                class="group flex items-center gap-2.5 px-3 py-2.5 mb-1.5 last:mb-0 hover:bg-[#F5F3FF] cursor-pointer rounded-lg transition-all duration-200 border border-transparent hover:border-[#DDD6FE]"
+                                :class="{ 'bg-[#F5F3FF] border-[#DDD6FE]': selectedDatasource?.id === ds.id }"
+                                @click="handleDatasourceSelect(ds)"
+                              >
+                                <div
                                   class="flex-shrink-0 w-7 h-7 rounded-lg bg-gray-50 flex items-center justify-center group-hover:bg-white transition-colors"
                                   :class="{ 'bg-white': selectedDatasource?.id === ds.id }"
                                 >
@@ -2161,7 +2356,7 @@ const handleHistoryClick = async (item: any) => {
                         </n-popover>
 
                       <n-tooltip
-                        v-else
+                        v-if="opt.value !== 'DATABASE_QA' && opt.value !== 'REPORT_QA'"
                         trigger="hover"
                       >
                         <template #trigger>
@@ -2278,6 +2473,29 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   * {
     font-family: $font-family-base;
   }
+
+  // 滚动条样式
+  &::-webkit-scrollbar {
+    width: 4px;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background: rgba(138, 138, 138, 0.2);
+    border-radius: 2px;
+    transition: background 0.2s ease;
+
+    &:hover {
+      background: rgba(138, 138, 138, 0.4);
+    }
+  }
+
+  // Firefox 滚动条样式
+  scrollbar-width: thin;
+  scrollbar-color: rgba(138, 138, 138, 0.2) transparent;
 }
 
 .new-chat-btn {
@@ -2306,6 +2524,7 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   border-radius: $radius-md;
 
   * {
@@ -2332,10 +2551,11 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   font-family: $font-family-base;
   font-size: 14px;
   font-weight: 400;
-  line-height: 1.5;
+  line-height: 1.45;
   letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 .model-name {
@@ -2452,7 +2672,7 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
     -ms-overflow-style: auto;
 
     &::-webkit-scrollbar {
-      width: 5px;
+      width: 3px;
     }
 
     &::-webkit-scrollbar-thumb {
@@ -2472,7 +2692,7 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 24px;
+  padding: 10px 16px;
   background-color: #fff;
   // border-bottom: 1px solid rgba($border-color, 0.5);
 }
@@ -2506,7 +2726,7 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 // 底部输入区域
 // ============================================
 .bottom-input-container {
-  padding: 20px 0;
+  padding: 12px 0 6px 0;
   background-color: transparent;
   display: flex;
   flex-direction: column;
@@ -2521,7 +2741,7 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   border-radius: $radius-xl;
   box-shadow: $shadow-lg;
   border: 1px solid $border-color;
-  padding: 18px 22px;
+  padding: 12px 18px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -2535,6 +2755,8 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 
 .input-wrapper {
   width: 100%;
+  margin: 0;
+  padding: 0;
 }
 
 .mode-pill {
@@ -2615,6 +2837,7 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   letter-spacing: -0.01em;
   padding: 0;
   flex: 1;
+  margin: 0;
 
   :deep(.n-input__textarea-el) {
     font-family: $font-family-base;
@@ -2626,7 +2849,7 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
     color: $text-primary;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    min-height: 40px;
+    min-height: 36px;
   }
 
   :deep(.n-input__placeholder) {
@@ -2638,8 +2861,8 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-top: 12px;
-  padding-top: 12px;
+  margin-top: 10px;
+  padding-top: 10px;
   border-top: 1px solid rgba($border-color, 0.5);
 }
 
@@ -2699,7 +2922,7 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   font-family: $font-family-base;
   font-size: 12px;
   color: $text-muted;
-  margin-top: 10px;
+  margin-top: 5px;
   text-align: center;
   letter-spacing: 0;
 }
@@ -3158,5 +3381,16 @@ $shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 .step-fade-leave-from {
   opacity: 1;
   transform: translateX(0);
+}
+
+// ============================================
+// 底部等待动画
+// ============================================
+.bottom-loading-indicator {
+  width: 100%;
+  min-height: auto;
+  font-family: $font-family-base;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 </style>
