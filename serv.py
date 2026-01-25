@@ -16,6 +16,7 @@ load_env()
 
 # 确保日志配置在 Sanic 启动前已正确加载
 import logging
+
 root_logger = logging.getLogger()
 if not root_logger.handlers:
     # 如果 root logger 没有 handlers，说明配置加载失败，使用备用配置
@@ -28,6 +29,7 @@ if not root_logger.handlers:
 
 app = Sanic("Aix-DB", configure_logging=False)
 
+
 # 确保在每个 worker 启动时都重新加载日志配置
 @app.before_server_start
 async def ensure_logging_config(app, loop):
@@ -36,6 +38,7 @@ async def ensure_logging_config(app, loop):
     Sanic 使用多进程模式时，每个 worker 都会重新加载代码，需要确保日志配置正确
     """
     import logging
+
     from config.load_env import load_env
 
     # 重新加载日志配置（如果被覆盖了）
@@ -47,8 +50,11 @@ async def ensure_logging_config(app, loop):
         load_env()
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.INFO)
-        logging.info("✅ [SERV] Logging configuration reloaded in worker - handlers: %d, level: %s",
-                     len(root_logger.handlers), root_logger.level)
+        logging.info(
+            "✅ [SERV] Logging configuration reloaded in worker - handlers: %d, level: %s",
+            len(root_logger.handlers),
+            root_logger.level,
+        )
 
 
 @app.main_process_start
@@ -57,6 +63,7 @@ async def init_minio(app, loop):
     在主进程启动时初始化 MinIO bucket（只执行一次）
     """
     import logging
+
     logger = logging.getLogger(__name__)
 
     # 获取默认 bucket 名称
@@ -64,12 +71,18 @@ async def init_minio(app, loop):
 
     try:
         from common.minio_util import MinioUtils
+
         minio_utils = MinioUtils()
         minio_utils.ensure_bucket(default_bucket)
-        logger.info(f"✅ [SERV] MinIO bucket '{default_bucket}' initialized successfully")
+        logger.info(
+            f"✅ [SERV] MinIO bucket '{default_bucket}' initialized successfully"
+        )
     except Exception as e:
         # MinIO 初始化失败不阻止服务启动，只记录警告
-        logger.warning(f"⚠️ [SERV] MinIO initialization failed: {e}. File upload features may not work.")
+        logger.warning(
+            f"⚠️ [SERV] MinIO initialization failed: {e}. File upload features may not work."
+        )
+
 
 autodiscover(
     app,
@@ -107,5 +120,7 @@ def get_server_config():
 
 
 if __name__ == "__main__":
+    config = get_server_config()
+    app.run(**config)
     config = get_server_config()
     app.run(**config)

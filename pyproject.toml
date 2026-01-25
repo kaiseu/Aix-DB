@@ -39,8 +39,8 @@ dependencies = [
     "pycryptodome>=3.23.0",
     "mcp>=1.12.2",
     "openai>=1.97.0",
-    "langchain>=1.0.0",
-    "langgraph>=0.6.3",
+    "langchain>=1.2.7",
+    "langgraph>=1.0.7",
     "langchain-mcp-adapters>=0.1.9",
     "langchain-community>=0.3.27",
     "sqlacodegen>=3.1.0",
@@ -74,7 +74,6 @@ dependencies = [
     "redshift-connector==2.1.4",
     "clickhouse-sqlalchemy==0.3.2",
     "deepagents>=0.3.7",
-    "deepagents-cli>=0.0.3",
 ]
 
 [[tool.uv.index]]

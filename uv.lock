@@ -123,7 +123,6 @@ dependencies = [
     { name = "colorlog" },
     { name = "dashscope" },
     { name = "deepagents" },
-    { name = "deepagents-cli" },
     { name = "duckdb" },
     { name = "elasticsearch" },
     { name = "faiss-cpu" },
@@ -170,6 +169,7 @@ dependencies = [
     { name = "redis" },
     { name = "redshift-connector" },
     { name = "requests" },
+    { name = "rich" },
     { name = "sanic" },
     { name = "sanic-ext" },
     { name = "seaborn" },
@@ -192,12 +192,11 @@ requires-dist = [
     { name = "colorlog", specifier = ">=6.9.0" },
     { name = "dashscope", specifier = ">=1.25.0" },
     { name = "deepagents", specifier = ">=0.3.7" },
-    { name = "deepagents-cli", specifier = ">=0.0.3" },
     { name = "duckdb", specifier = ">=1.0.0,<2.0.0" },
     { name = "elasticsearch", specifier = "==8.17.1" },
     { name = "faiss-cpu", specifier = ">=1.12.0" },
     { name = "jieba", specifier = ">=0.42.1" },
-    { name = "langchain", specifier = ">=1.0.0" },
+    { name = "langchain", specifier = ">=1.2.7" },
     { name = "langchain-chroma", specifier = ">=0.2.5" },
     { name = "langchain-community", specifier = ">=0.3.27" },
     { name = "langchain-huggingface", specifier = ">=1.2.0" },
@@ -206,7 +205,7 @@ requires-dist = [
     { name = "langchain-openai", specifier = ">=1.0.2" },
     { name = "langchain-tavily", specifier = ">=0.2.11" },
     { name = "langfuse", specifier = ">=3.10.0" },
-    { name = "langgraph", specifier = ">=0.6.3" },
+    { name = "langgraph", specifier = ">=1.0.7" },
     { name = "langgraph-cli", extras = ["inmem"], specifier = ">=0.4.7" },
     { name = "lxml", specifier = ">=5.3.1,<6.0.0" },
     { name = "mammoth", specifier = ">=1.9.0,<2.0.0" },
@@ -239,6 +238,7 @@ requires-dist = [
     { name = "redis", specifier = ">=5.0.7,<6.0.0" },
     { name = "redshift-connector", specifier = "==2.1.4" },
     { name = "requests", specifier = ">=2.32.3,<3.0.0" },
+    { name = "rich", specifier = ">=13.0.0" },
     { name = "sanic", specifier = ">=25.0.0,<25.4.0" },
     { name = "sanic-ext", specifier = ">=24.0.0,<=24.12.0" },
     { name = "seaborn", specifier = ">=0.13.2,<0.14.0" },
@@ -863,25 +863,6 @@ dependencies = [
 sdist = { url = "https://mirrors.aliyun.com/pypi/packages/b3/81/2ada9232cf2917ebb6b0c200de7f51540f63a2f817162ebe75b90bbe81f4/deepagents-0.3.7.tar.gz", hash = "sha256:7cdfdeb07e7dbbcef231ed1c80f532660a0982f139ae65a6deae7ed738316b65" }
 wheels = [
     { url = "https://mirrors.aliyun.com/pypi/packages/28/b0/413d89c6d1511236d66857dea65e663dc52c5fab540859069e08a5eaaf2e/deepagents-0.3.7-py3-none-any.whl", hash = "sha256:4e2cdac6b47349177f29a1fbb1c2ffec84bf14bc6e0f52d834bf18f61022ece7" },
-]
-
-[[package]]
-name = "deepagents-cli"
-version = "0.0.3"
-source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
-dependencies = [
-    { name = "langchain" },
-    { name = "langchain-anthropic" },
-    { name = "langchain-core" },
-    { name = "python-dotenv" },
-    { name = "requests" },
-    { name = "rich" },
-    { name = "tavily-python" },
-    { name = "wcmatch" },
-]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/77/b3/85136f03dfe041fab07d614796adc929b34fba3c436b31a7b79096e0fdcb/deepagents_cli-0.0.3.tar.gz", hash = "sha256:10fce8923d36ea1a0101f9f8573fafbdc32030fc81b77cb70bb9b821ed1dc5e6" }
-wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/95/1b/b93bb5cb4a53e69dfdf75353143aa1415d0e278757ddbf6b5c2ff5b93a35/deepagents_cli-0.0.3-py3-none-any.whl", hash = "sha256:26462a1f2e8c9ccb2083fae95701299fe7d5aabaf56735d0804875038633e82c" },
 ]
 
 [[package]]
@@ -1552,16 +1533,16 @@ wheels = [
 
 [[package]]
 name = "langchain"
-version = "1.2.6"
+version = "1.2.7"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langgraph" },
     { name = "pydantic" },
 ]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/f5/bc/d8f506a525baadee99a65c6cc28c1c35c9eaf1cb2009f048e9861d81a600/langchain-1.2.6.tar.gz", hash = "sha256:7d46cbf719d860a16f6fc182d5d3de17453dda187f3d43e9c40ac352a5094fdd" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/47/f2/478ca9f3455b5d66402066d287eae7e8d6c722acfb8553937e06af708334/langchain-1.2.7.tar.gz", hash = "sha256:ba40e8d5b069a22f7085f54f405973da3d87cfdebf116282e77c692271432ecb" }
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/3f/28/d5dc4cb06ccb29d62a590d446072964766555e85863f5044c6e644c07d0d/langchain-1.2.6-py3-none-any.whl", hash = "sha256:a9a6c39f03c09b6eb0f1b47e267ad2a2fd04e124dfaa9753bd6c11d2fe7d944e" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/dd/c8/9ce37ae34870834c7d00bb14ff4876b700db31b928635e3307804dc41d74/langchain-1.2.7-py3-none-any.whl", hash = "sha256:1d643c8ca569bcde2470b853807f74f0768b3982d25d66d57db21a166aabda72" },
 ]
 
 [[package]]
@@ -1772,7 +1753,7 @@ wheels = [
 
 [[package]]
 name = "langgraph"
-version = "1.0.4"
+version = "1.0.7"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
     { name = "langchain-core" },
@@ -1782,9 +1763,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "xxhash" },
 ]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/d6/3c/af87902d300c1f467165558c8966d8b1e1f896dace271d3f35a410a5c26a/langgraph-1.0.4.tar.gz", hash = "sha256:86d08e25d7244340f59c5200fa69fdd11066aa999b3164b531e2a20036fac156" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/72/5b/f72655717c04e33d3b62f21b166dc063d192b53980e9e3be0e2a117f1c9f/langgraph-1.0.7.tar.gz", hash = "sha256:0cfdfee51e6e8cfe503ecc7367c73933437c505b03fa10a85c710975c8182d9a" }
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/14/52/4eb25a3f60399da34ba34adff1b3e324cf0d87eb7a08cebf1882a9b5e0d5/langgraph-1.0.4-py3-none-any.whl", hash = "sha256:b1a835ceb0a8d69b9db48075e1939e28b1ad70ee23fa3fa8f90149904778bacf" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/7e/0e/fe80144e3e4048e5d19ccdb91ac547c1a7dc3da8dbd1443e210048194c14/langgraph-1.0.7-py3-none-any.whl", hash = "sha256:9d68e8f8dd8f3de2fec45f9a06de05766d9b075b78fb03171779893b7a52c4d2" },
 ]
 
 [[package]]
@@ -1858,15 +1839,15 @@ inmem = [
 
 [[package]]
 name = "langgraph-prebuilt"
-version = "1.0.5"
+version = "1.0.7"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
     { name = "langchain-core" },
     { name = "langgraph-checkpoint" },
 ]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/46/f9/54f8891b32159e4542236817aea2ee83de0de18bce28e9bdba08c7f93001/langgraph_prebuilt-1.0.5.tar.gz", hash = "sha256:85802675ad778cc7240fd02d47db1e0b59c0c86d8369447d77ce47623845db2d" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/a7/59/711aecd1a50999456850dc328f3cad72b4372d8218838d8d5326f80cb76f/langgraph_prebuilt-1.0.7.tar.gz", hash = "sha256:38e097e06de810de4d0e028ffc0e432bb56d1fb417620fb1dfdc76c5e03e4bf9" }
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/87/5e/aeba4a5b39fe6e874e0dd003a82da71c7153e671312671a8dacc5cb7c1af/langgraph_prebuilt-1.0.5-py3-none-any.whl", hash = "sha256:22369563e1848862ace53fbc11b027c28dd04a9ac39314633bb95f2a7e258496" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/47/49/5e37abb3f38a17a3487634abc2a5da87c208cc1d14577eb8d7184b25c886/langgraph_prebuilt-1.0.7-py3-none-any.whl", hash = "sha256:e14923516504405bb5edc3977085bc9622c35476b50c1808544490e13871fe7c" },
 ]
 
 [[package]]
@@ -1888,15 +1869,15 @@ wheels = [
 
 [[package]]
 name = "langgraph-sdk"
-version = "0.2.10"
+version = "0.3.3"
 source = { registry = "https://mirrors.aliyun.com/pypi/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "orjson" },
 ]
-sdist = { url = "https://mirrors.aliyun.com/pypi/packages/cb/0f/88772be3301cc5ad495e77705538edbcbf7f2ccf38d21555fa26131203aa/langgraph_sdk-0.2.10.tar.gz", hash = "sha256:ab58331504fbea28e6322037aa362929799b4e9106663ac1dbd7c5ac44558933" }
+sdist = { url = "https://mirrors.aliyun.com/pypi/packages/c3/0f/ed0634c222eed48a31ba48eab6881f94ad690d65e44fe7ca838240a260c1/langgraph_sdk-0.3.3.tar.gz", hash = "sha256:c34c3dce3b6848755eb61f0c94369d1ba04aceeb1b76015db1ea7362c544fb26" }
 wheels = [
-    { url = "https://mirrors.aliyun.com/pypi/packages/8b/cc/ff4ba17253d31981b047f4be52cc51a19fa28dd2dd16a880c0c595bd66bd/langgraph_sdk-0.2.10-py3-none-any.whl", hash = "sha256:9aef403663726085de6851e4e50459df9562069bd316dd0261eb359f776fd0ef" },
+    { url = "https://mirrors.aliyun.com/pypi/packages/6e/be/4ad511bacfdd854afb12974f407cb30010dceb982dc20c55491867b34526/langgraph_sdk-0.3.3-py3-none-any.whl", hash = "sha256:a52ebaf09d91143e55378bb2d0b033ed98f57f48c9ad35c8f81493b88705fc7b" },
 ]
 
 [[package]]

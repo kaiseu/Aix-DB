@@ -7,21 +7,21 @@ import traceback
 import aiohttp
 import requests
 
-from agent.claude_sdk_agent import ClaudeSDKAgent
+# ClaudeSDKAgent 已不再使用，改用 CommonReactAgent
+# from agent.claude_sdk_agent import ClaudeSDKAgent
 from agent.common_react_agent import CommonReactAgent
 from agent.deepagent.deep_research_agent import DeepAgent
 from agent.excel.excel_agent import ExcelAgent
 from agent.text2sql.text2_sql_agent import Text2SqlAgent
 from common.exception import MyException
-from constants.code_enum import (
-    IntentEnum,
-    DataTypeEnum,
-    DiFyCodeEnum,
-    SysCodeEnum,
-)
+from constants.code_enum import DataTypeEnum, DiFyCodeEnum, IntentEnum, SysCodeEnum
 from constants.dify_rest_api import DiFyRestApi
 from services.db_qadata_process import process
-from services.user_service import add_question_record, query_user_qa_record, decode_jwt_token
+from services.user_service import (
+    add_question_record,
+    decode_jwt_token,
+    query_user_qa_record,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -91,17 +91,31 @@ class LLMRequest:
 
             # 调用智能体
             if qa_type == IntentEnum.COMMON_QA.value[0]:
-                await common_agent.run_agent(query, res, chat_id, uuid_str, token, file_list)
+                await common_agent.run_agent(
+                    query, res, chat_id, uuid_str, token, file_list
+                )
                 return None
             elif qa_type == IntentEnum.DATABASE_QA.value[0]:
                 # 权限检查已在接口层完成，这里直接调用 agent
-                await sql_agent.run_agent(query, res, chat_id, uuid_str, token, datasource_id)
+                await sql_agent.run_agent(
+                    query, res, chat_id, uuid_str, token, datasource_id
+                )
                 return None
             elif qa_type == IntentEnum.FILEDATA_QA.value[0]:
-                await excel_agent.run_excel_agent(cleaned_query, res, chat_id, uuid_str, token, file_list)
+                await excel_agent.run_excel_agent(
+                    cleaned_query, res, chat_id, uuid_str, token, file_list
+                )
                 return None
             elif qa_type == IntentEnum.REPORT_QA.value[0]:
-                await deep_agent.run_agent(cleaned_query, res, chat_id, uuid_str, token, file_list)
+                await deep_agent.run_agent(
+                    cleaned_query,
+                    res,
+                    chat_id,
+                    uuid_str,
+                    token,
+                    file_list,
+                    datasource_id,
+                )
                 return None
 
             # 封装问答上下文信息
@@ -111,7 +125,9 @@ class LLMRequest:
             app_key = self._get_authorization_token(qa_type)
 
             # 构建请求参数
-            dify_service_url, body_params, headers = self._build_request(chat_id, cleaned_query, app_key, qa_type)
+            dify_service_url, body_params, headers = self._build_request(
+                chat_id, cleaned_query, app_key, qa_type
+            )
 
             # 收集流式输出结果
             t02_answer_data = []
@@ -153,31 +169,57 @@ class LLMRequest:
                                         if event_list[1] == "0":
                                             # 输出开始
                                             data_type = event_list[2]
-                                            if data_type == DataTypeEnum.ANSWER.value[0]:
+                                            if (
+                                                data_type
+                                                == DataTypeEnum.ANSWER.value[0]
+                                            ):
                                                 await self.send_message(
                                                     res,
-                                                    {"data": {"messageType": "begin"}, "dataType": data_type},
+                                                    {
+                                                        "data": {
+                                                            "messageType": "begin"
+                                                        },
+                                                        "dataType": data_type,
+                                                    },
                                                     answer,
                                                 )
                                         elif event_list[1] == "1":
                                             # 输出结束
                                             data_type = event_list[2]
-                                            if data_type == DataTypeEnum.ANSWER.value[0]:
+                                            if (
+                                                data_type
+                                                == DataTypeEnum.ANSWER.value[0]
+                                            ):
                                                 await self.send_message(
                                                     res,
-                                                    {"data": {"messageType": "end"}, "dataType": data_type},
+                                                    {
+                                                        "data": {"messageType": "end"},
+                                                        "dataType": data_type,
+                                                    },
                                                     answer,
                                                 )
 
                                             # 输出业务数据
-                                            elif bus_data and data_type == DataTypeEnum.BUS_DATA.value[0]:
-                                                res_data = process(json.loads(bus_data)["data"])
+                                            elif (
+                                                bus_data
+                                                and data_type
+                                                == DataTypeEnum.BUS_DATA.value[0]
+                                            ):
+                                                res_data = process(
+                                                    json.loads(bus_data)["data"]
+                                                )
                                                 await self.send_message(
                                                     res,
-                                                    {"data": res_data, "dataType": data_type},
+                                                    {
+                                                        "data": res_data,
+                                                        "dataType": data_type,
+                                                    },
                                                     answer,
                                                 )
-                                                t04_answer_data = {"data": res_data, "dataType": data_type}
+                                                t04_answer_data = {
+                                                    "data": res_data,
+                                                    "dataType": data_type,
+                                                }
 
                                             data_type = ""
 
@@ -187,14 +229,19 @@ class LLMRequest:
                                             await self.send_message(
                                                 res,
                                                 {
-                                                    "data": {"messageType": "continue", "content": answer},
+                                                    "data": {
+                                                        "messageType": "continue",
+                                                        "content": answer,
+                                                    },
                                                     "dataType": data_type,
                                                     "task_id": task_id,
                                                 },
                                                 answer,
                                             )
 
-                                            t02_answer_data.append(await self.format_answer(answer))
+                                            t02_answer_data.append(
+                                                await self.format_answer(answer)
+                                            )
 
                                         # 这里设置业务数据
                                         if data_type == DataTypeEnum.BUS_DATA.value[0]:
@@ -203,16 +250,21 @@ class LLMRequest:
                                 elif DiFyCodeEnum.MESSAGE_ERROR.value[0] == event_name:
                                     # 输出异常情况日志
                                     error_msg = data_json.get("message")
-                                    logging.error(f"Error 调用dify失败错误信息: {data_json}")
+                                    logging.error(
+                                        f"Error 调用dify失败错误信息: {data_json}"
+                                    )
                                     await res.write(
                                         "data:"
                                         + json.dumps(
                                             {
                                                 "data": {
                                                     "messageType": "error",
-                                                    "content": "调用失败请查看dify日志,错误信息: " + error_msg,
+                                                    "content": "调用失败请查看dify日志,错误信息: "
+                                                    + error_msg,
                                                 },
-                                                "dataType": DataTypeEnum.ANSWER.value[0],
+                                                "dataType": DataTypeEnum.ANSWER.value[
+                                                    0
+                                                ],
                                             },
                                             ensure_ascii=False,
                                         )
@@ -221,7 +273,10 @@ class LLMRequest:
 
                                 elif DiFyCodeEnum.MESSAGE_END.value[0] == event_name:
                                     t02_message_json = {
-                                        "data": {"messageType": "continue", "content": "".join(t02_answer_data)},
+                                        "data": {
+                                            "messageType": "continue",
+                                            "content": "".join(t02_answer_data),
+                                        },
                                         "dataType": DataTypeEnum.ANSWER.value[0],
                                     }
 
@@ -259,7 +314,16 @@ class LLMRequest:
             await self.res_end(res)
 
     @staticmethod
-    async def _save_message(message, qa_context, conversation_id, message_id, task_id, qa_type, uuid_str, file_list):
+    async def _save_message(
+        message,
+        qa_context,
+        conversation_id,
+        message_id,
+        task_id,
+        qa_type,
+        uuid_str,
+        file_list,
+    ):
         """
             保存消息记录并发送SSE数据
         :param message:
@@ -313,13 +377,15 @@ class LLMRequest:
             # 尝试提取<think>标签内容
             think_content = answer.replace("<think>", "").replace("</think>", "")
             # 构造思考过程的HTML格式
-            think_html = """<details style="color:gray;background-color: #f8f8f8;padding: 2px;border-radius: 
+            think_html = """<details style="color:gray;background-color: #f8f8f8;padding: 2px;border-radius:
                 6px;margin-top:5px" open>
                     <summary> Thinking... </summary>"""
 
             formatted_message = think_html + think_content.replace("\n", "")
         elif answer and ("</think>" in answer):
-            formatted_message = "</details>\n" + answer.replace("<think>", "").replace("</think>", "")
+            formatted_message = "</details>\n" + answer.replace("<think>", "").replace(
+                "</think>", ""
+            )
         else:
             formatted_message = answer
 
@@ -353,11 +419,15 @@ class LLMRequest:
                     },
                     "dataType": "t02",
                 }
-                await response.write("data:" + json.dumps(formatted_message, ensure_ascii=False) + "\n\n")
+                await response.write(
+                    "data:" + json.dumps(formatted_message, ensure_ascii=False) + "\n\n"
+                )
             except Exception as e:
                 # 处理异常情况
                 logging.warning(f"处理<think>标签时出错: {e}")
-                await response.write("data:" + json.dumps(message, ensure_ascii=False) + "\n\n")
+                await response.write(
+                    "data:" + json.dumps(message, ensure_ascii=False) + "\n\n"
+                )
         else:
             # # 只有在 content 存在时才添加 </details>
             if answer and ("</think>" in answer):
@@ -377,7 +447,9 @@ class LLMRequest:
                     + "\n\n"
                 )
             else:
-                await response.write("data:" + json.dumps(message, ensure_ascii=False) + "\n\n")
+                await response.write(
+                    "data:" + json.dumps(message, ensure_ascii=False) + "\n\n"
+                )
 
     @staticmethod
     async def res_begin(res, chat_id):
@@ -474,7 +546,9 @@ async def query_dify_suggested(chat_id) -> dict:
     """
     # 查询对话记录
     qa_record = query_user_qa_record(chat_id)
-    url = DiFyRestApi.replace_path_params(DiFyRestApi.DIFY_REST_SUGGESTED, {"message_id": qa_record[0]["message_id"]})
+    url = DiFyRestApi.replace_path_params(
+        DiFyRestApi.DIFY_REST_SUGGESTED, {"message_id": qa_record[0]["message_id"]}
+    )
     logger.info(f"query llm suggested url: {url}")
     api_key = os.getenv("DIFY_DATABASE_QA_API_KEY")
     headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
@@ -486,7 +560,9 @@ async def query_dify_suggested(chat_id) -> dict:
         logger.info("Feedback successfully sent.")
         return response.json()
     else:
-        logger.error(f"Failed to send feedback. Status code: {response.status_code},Response body: {response.text}")
+        logger.error(
+            f"Failed to send feedback. Status code: {response.status_code},Response body: {response.text}"
+        )
         raise
 
 
@@ -511,36 +587,53 @@ async def stop_dify_chat(request, task_id, qa_type) -> dict:
         user_dict = await decode_jwt_token(token)
         task_id = user_dict["id"]
         success = await common_agent.cancel_task(task_id)
-        return {"success": success, "message": "任务已停止" if success else "未找到任务"}
+        return {
+            "success": success,
+            "message": "任务已停止" if success else "未找到任务",
+        }
 
     elif qa_type == IntentEnum.DATABASE_QA.value[0]:
         user_dict = await decode_jwt_token(token)
         task_id = user_dict["id"]
         success = await sql_agent.cancel_task(task_id)
-        return {"success": success, "message": "任务已停止" if success else "未找到任务"}
+        return {
+            "success": success,
+            "message": "任务已停止" if success else "未找到任务",
+        }
 
     elif qa_type == IntentEnum.FILEDATA_QA.value[0]:
         user_dict = await decode_jwt_token(token)
         task_id = user_dict["id"]
         success = await excel_agent.cancel_task(task_id)
-        return {"success": success, "message": "任务已停止" if success else "未找到任务"}
+        return {
+            "success": success,
+            "message": "任务已停止" if success else "未找到任务",
+        }
 
     elif qa_type == IntentEnum.REPORT_QA.value[0]:
         user_dict = await decode_jwt_token(token)
         task_id = user_dict["id"]
         success = await deep_agent.cancel_task(task_id)
-        return {"success": success, "message": "任务已停止" if success else "未找到任务"}
+        return {
+            "success": success,
+            "message": "任务已停止" if success else "未找到任务",
+        }
 
     else:
         # 查询对话记录
-        url = DiFyRestApi.replace_path_params(DiFyRestApi.DIFY_REST_STOP, {"task_id": task_id})
+        url = DiFyRestApi.replace_path_params(
+            DiFyRestApi.DIFY_REST_STOP, {"task_id": task_id}
+        )
 
         api_key = os.getenv("DIFY_DATABASE_QA_API_KEY")
         # 行业报告走的是 报告问答的key
         if IntentEnum.FILEDATA_QA.value[0] == qa_type:
             api_key = os.getenv("DIFY_ENTERPRISE_REPORT_API_KEY")
 
-        headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
         body = {"user": "abc-123"}
 
         logger.info(url)
@@ -556,5 +649,7 @@ async def stop_dify_chat(request, task_id, qa_type) -> dict:
             logger.info("Stop chat successfully sent.")
             return response.json()
         else:
-            logger.error(f"Failed to stop chat. Status code: {response.status_code},Response body: {response.text}")
+            logger.error(
+                f"Failed to stop chat. Status code: {response.status_code},Response body: {response.text}"
+            )
             raise
